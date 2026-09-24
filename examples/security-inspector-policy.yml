@@ -106,7 +106,8 @@ rules:
     description: Session and cookie flags protect against hijacking and CSRF.
     guidance: Confirm Secure/HttpOnly/SameSite are kept, sessions expire and CSRF protection is not disabled.
     content:
-      - pattern: '\b(httpOnly|sameSite|secure\s*[:=]|csrf|xsrf|session(Id|_id)?\s*[:=]|express-session|SESSION_COOKIE|maxAge)'
+      # Cookie flags and CSRF settings only; bare "session" names were too noisy in UI code.
+      - pattern: '\b(httpOnly|sameSite|secure\s*:\s*(true|false)|csrf|xsrf|express-session|cookie-session|SESSION_COOKIE_\w+|session\.cookie)'
         flags: i
 
   - id: cryptography
@@ -149,7 +150,9 @@ rules:
     guidance: Confirm user input cannot reach these calls unsanitised; prefer parameterised queries.
     contentScope: added
     content:
-      - pattern: '\b(eval\(|new Function\(|child_process|exec(Sync)?\(|spawn\(|subprocess\.|os\.system\(|Runtime\.getRuntime\(\)\.exec|\$queryRawUnsafe|\.raw\(|dangerouslySetInnerHTML|innerHTML\s*=)'
+      # No leading \b: it never matches before "$" or ".", so "$queryRawUnsafe" would be missed.
+      # "(?<![.\w])exec(" skips harmless method calls such as regex.exec(...).
+      - pattern: '(\beval\(|\bnew Function\(|child_process|(?<![.\w])exec(Sync)?\(|\bspawn\(|\bsubprocess\.|\bos\.system\(|Runtime\.getRuntime\(\)\.exec|\$(query|execute)RawUnsafe|\.raw\(|dangerouslySetInnerHTML|\.innerHTML\s*=)'
 
   - id: payments
     name: Payment processing

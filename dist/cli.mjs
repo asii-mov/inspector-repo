@@ -29171,7 +29171,7 @@ function integrityRule(paths) {
   };
 }
 function compileRule(rule, honoursIgnorePaths) {
-  const options = { dot: true };
+  const options = { dot: true, nocase: true };
   const exclude = rule.excludePaths.length > 0 ? (0, import_picomatch2.default)(rule.excludePaths, options) : () => false;
   return {
     rule,
@@ -29293,7 +29293,7 @@ function matchFile(compiled, file2, maxSnippetLines) {
 }
 function scan(policy, profile, files, options = {}) {
   const maxSnippetLines = options.maxSnippetLines ?? policy.settings.report.maxSnippetLines;
-  const ignored = policy.settings.ignorePaths.length > 0 ? (0, import_picomatch2.default)(policy.settings.ignorePaths, { dot: true }) : () => false;
+  const ignored = policy.settings.ignorePaths.length > 0 ? (0, import_picomatch2.default)(policy.settings.ignorePaths, { dot: true, nocase: true }) : () => false;
   const compiled = [];
   if (policy.settings.integrityRule) compiled.push(compileRule(integrityRule(options.integrityPaths ?? []), false));
   for (const rule of policy.rules) {

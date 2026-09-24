@@ -99,7 +99,8 @@ export function integrityRule(paths: string[]): Rule {
 }
 
 function compileRule(rule: Rule, honoursIgnorePaths: boolean): CompiledRule {
-  const options = { dot: true };
+  // Case-insensitive: `**/*password*` must also catch `ResetPassword.ts`.
+  const options = { dot: true, nocase: true };
   const exclude = rule.excludePaths.length > 0 ? picomatch(rule.excludePaths, options) : () => false;
   return {
     rule,
@@ -242,7 +243,7 @@ function matchFile(compiled: CompiledRule, file: ChangedFile, maxSnippetLines: n
 /** Scans the changed files of a pull request against the policy. Pure: no I/O. */
 export function scan(policy: Policy, profile: RepositoryProfile, files: ChangedFile[], options: ScanOptions = {}): ScanResult {
   const maxSnippetLines = options.maxSnippetLines ?? policy.settings.report.maxSnippetLines;
-  const ignored = policy.settings.ignorePaths.length > 0 ? picomatch(policy.settings.ignorePaths, { dot: true }) : () => false;
+  const ignored = policy.settings.ignorePaths.length > 0 ? picomatch(policy.settings.ignorePaths, { dot: true, nocase: true }) : () => false;
 
   const compiled: CompiledRule[] = [];
   if (policy.settings.integrityRule) compiled.push(compileRule(integrityRule(options.integrityPaths ?? []), false));

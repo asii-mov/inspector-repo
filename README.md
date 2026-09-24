@@ -146,7 +146,7 @@ green.
 | `description` | | Why it's security critical. |
 | `guidance` | | What the reviewer should check. |
 | `severity` | `high` | `low`, `medium`, `high` or `critical`. |
-| `paths` | `[]` | Glob patterns ([picomatch](https://github.com/micromatch/picomatch)) matched against the file path; renames also match the old path. |
+| `paths` | `[]` | Glob patterns ([picomatch](https://github.com/micromatch/picomatch)) matched case-insensitively against the file path; renames also match the old path. |
 | `excludePaths` | `[]` | Globs excluded from this rule (tests, docs, styles…). |
 | `content` | `[]` | Regular expressions matched against changed lines. Either a string or `{ pattern, flags }`. |
 | `contentScope` | `both` | Match `added` lines, `removed` lines, or `both`. |
