@@ -1,0 +1,19 @@
+# Optional .github/security-inspector.yml in an individual repository.
+#
+# With a central policy configured, repositories can only ADD rules here (settings and central
+# rules cannot be changed). Without a central policy, this file is the whole policy and uses the
+# same format as security-inspector-policy.yml.
+#
+# This file is always read from the pull request's base branch, and changes to it are flagged by
+# the built-in integrity rule.
+version: 1
+rules:
+  - id: tenant-isolation
+    name: Tenant isolation
+    severity: critical
+    description: Queries must always be scoped to the caller's tenant.
+    guidance: Every query on tenant data must filter by tenant_id taken from the session, never from the request.
+    paths: ["src/db/**", "src/repositories/**"]
+    content:
+      - pattern: '\btenant_?id\b'
+        flags: i

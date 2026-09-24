@@ -1,0 +1,46 @@
+# Add this file to each repository as .github/workflows/security-inspector.yml, then make the
+# "Security Inspector" status a required check (branch protection or an organisation ruleset).
+name: Security Inspector
+
+on:
+  # pull_request_target runs the workflow from the base branch with a write token, even for forks.
+  # This is safe here because the inspector never checks out or executes pull request code: it only
+  # reads the diff through the API. It also means a pull request cannot edit this workflow to skip it.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+
+concurrency:
+  group: security-inspector-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    # Only react to comments on pull requests.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      # Optional: a GitHub App token lets the inspector read the central policy repository and team
+      # membership. Without it, list reviewers by username and keep the policy in this repository.
+      - id: app-token
+        if: vars.SECURITY_INSPECTOR_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.SECURITY_INSPECTOR_APP_ID }}
+          private-key: ${{ secrets.SECURITY_INSPECTOR_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: asii-mov/inspector-repo@v1
+        with:
+          org-token: ${{ steps.app-token.outputs.token }}
+          policy-repository: acme/security-policies
+          policy-path: security-inspector-policy.yml

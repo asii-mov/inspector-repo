@@ -1,0 +1,60 @@
+name: Security Inspector
+description: Flags pull requests that modify security-critical components and blocks merge until the security team reviews them or an authorised user bypasses.
+author: Security Inspector contributors
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  github-token:
+    description: Token used to read the pull request and write the status, comment and labels.
+    default: ${{ github.token }}
+  org-token:
+    description: >-
+      Optional token (GitHub App installation token or fine-grained PAT) used to read the central
+      policy repository and organisation team membership. Needs "Contents: read" on the policy
+      repository and "Members: read" on the organisation. Defaults to github-token.
+    required: false
+  policy-repository:
+    description: Central policy repository maintained by the security team, e.g. "acme/security-policies". When empty, the policy is read from local-config-path on the base branch.
+    required: false
+  policy-ref:
+    description: Branch, tag or SHA of the central policy. Defaults to the policy repository's default branch.
+    required: false
+  policy-path:
+    description: Path of the policy file inside the central policy repository.
+    default: security-inspector-policy.yml
+  local-config-path:
+    description: Repository-local policy (or extra rules, when a central policy is used). Always read from the pull request's base commit.
+    default: .github/security-inspector.yml
+  status-context:
+    description: Name of the commit status. Mark this as a required status check in branch protection or rulesets.
+    default: Security Inspector
+  bot-login:
+    description: Login of the account that owns github-token. Set to "<app-slug>[bot]" when using a GitHub App token.
+    default: github-actions[bot]
+  blocked-state:
+    description: Commit status state used while security review is required ("failure" or "pending").
+    default: failure
+  fail-on-block:
+    description: Also fail the workflow job when review is required. The commit status is the recommended gate, so this defaults to false.
+    default: 'false'
+  pull-request-number:
+    description: Pull request to inspect when triggered by workflow_dispatch.
+    required: false
+
+outputs:
+  decision:
+    description: One of clear, approved, bypassed, blocked.
+  blocking-count:
+    description: Number of flagged components that require security review.
+  finding-count:
+    description: Number of flagged components, including non-blocking ones.
+  components:
+    description: Comma-separated rule ids of the blocking components.
+  priority:
+    description: Whether the repository is a priority repository.
+
+runs:
+  using: node24
+  main: dist/index.mjs

@@ -1,0 +1,186 @@
+# Security Inspector policy
+#
+# Maintained by the security team in a central repository (e.g. acme/security-policies).
+# Every repository that runs the inspector is checked against this file.
+# Validate changes locally with:  npx security-inspector validate security-inspector-policy.yml
+version: 1
+
+settings:
+  # Findings at or above this severity block merge until security approves (low|medium|high|critical).
+  blockOn: high
+  requiredApprovals: 1
+  # Approvals and bypasses survive new commits unless a flagged file changes ("any-change" to be stricter).
+  staleApprovals: flagged-changes
+
+  # Who counts as a security reviewer. Team membership needs an `org-token` with "Members: read".
+  securityTeam:
+    teams: [acme/security]
+    users: []
+  requestReview: true
+
+  # Never inspected (applies to every rule except the built-in integrity rule).
+  ignorePaths:
+    - "**/node_modules/**"
+    - "**/vendor/**"
+    - "**/*.min.js"
+    - "**/*.snap"
+
+  bypass:
+    enabled: true
+    command: /security-bypass
+    # Besides the security team, who may bypass a false positive.
+    teams: [acme/engineering-leads]
+    users: []
+    allowAuthor: false
+    minReasonLength: 15
+
+  labels:
+    reviewRequired: security-review-required
+    approved: security-approved
+    bypassed: security-bypassed
+
+  report:
+    maxSnippetLines: 20
+    showNonBlocking: true
+
+# Repositories that hold sensitive data or are internet-facing get stricter treatment.
+priorityRepositories:
+  - name: payments
+    reason: PCI-DSS cardholder data environment
+    repositories: ["acme/payments-*", "acme/billing-api"]
+    blockOn: medium
+    severityBoost: 1
+    requiredApprovals: 2
+    allowBypass: false
+  - name: identity
+    reason: Customer identity provider
+    repositories: ["acme/identity-*", "acme/sso-gateway"]
+    blockOn: medium
+
+rules:
+  - id: authentication
+    name: Authentication
+    severity: critical
+    description: Login, credential verification, MFA and token issuance decide who a user is.
+    guidance: Check for bypassable checks, weakened password or MFA handling, token lifetime changes and user enumeration.
+    match: any
+    paths:
+      - "**/auth/**"
+      - "**/authentication/**"
+      - "**/*login*"
+      - "**/*signin*"
+      - "**/*password*"
+      - "**/*oauth*"
+      - "**/*saml*"
+      - "**/*oidc*"
+      - "**/*mfa*"
+      - "**/*2fa*"
+    excludePaths: ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/*.md", "**/*.css", "**/*.scss"]
+    content:
+      - pattern: '\b(jwt\.(sign|verify|decode)|jsonwebtoken|passport\.(use|authenticate)|bcrypt|argon2|scrypt|pbkdf2|verify_?password|check_?password|authenticate\()'
+        flags: i
+      - pattern: '\b(id_token|access_token|refresh_token|totp|webauthn)\b'
+        flags: i
+
+  - id: authorization
+    name: Authorization & access control
+    severity: critical
+    description: Role, permission and ownership checks decide what a user may do.
+    guidance: Look for removed or loosened checks, new unauthenticated routes and IDOR (missing ownership checks).
+    match: any
+    paths:
+      - "**/permissions/**"
+      - "**/policies/**"
+      - "**/rbac/**"
+      - "**/acl/**"
+      - "**/*authoriz*"
+      - "**/middleware/*auth*"
+    excludePaths: ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/*.md"]
+    content:
+      - pattern: '\b(is_?admin|has_?role|has_?permission|can_?access|require_?role|authorize|@PreAuthorize|@RolesAllowed|@login_required|permission_classes|AllowAny|skip_before_action\s*:authenticate)'
+        flags: i
+
+  - id: session-management
+    name: Session & cookie security
+    severity: high
+    description: Session and cookie flags protect against hijacking and CSRF.
+    guidance: Confirm Secure/HttpOnly/SameSite are kept, sessions expire and CSRF protection is not disabled.
+    content:
+      - pattern: '\b(httpOnly|sameSite|secure\s*[:=]|csrf|xsrf|session(Id|_id)?\s*[:=]|express-session|SESSION_COOKIE|maxAge)'
+        flags: i
+
+  - id: cryptography
+    name: Cryptography
+    severity: high
+    description: Encryption, hashing, randomness and TLS settings.
+    guidance: Watch for weak algorithms (MD5, SHA-1, DES, ECB), hardcoded keys or IVs, non-cryptographic randomness and disabled certificate validation.
+    match: any
+    paths: ["**/crypto/**", "**/encryption/**", "**/*cipher*"]
+    content:
+      - pattern: '\b(createCipheriv|createHash|createHmac|crypto\.subtle|Cipher\.getInstance|MessageDigest|hashlib\.|Fernet|AES|RSA|ECDSA|md5|sha1|DES\b|ECB)'
+        flags: i
+      - pattern: '(rejectUnauthorized\s*:\s*false|verify\s*=\s*False|InsecureSkipVerify|NODE_TLS_REJECT_UNAUTHORIZED)'
+
+  - id: secrets
+    name: Secrets & credentials handling
+    severity: critical
+    description: Hardcoded credentials or changes to how secrets are loaded.
+    guidance: Ensure no real secrets are committed and secret sources (vault, KMS) are not replaced with plaintext.
+    contentScope: added
+    content:
+      - pattern: '(api[_-]?key|secret|passw(or)?d|private[_-]?key|client[_-]?secret)\s*[:=]\s*["''][^"'']{8,}["'']'
+        flags: i
+      - pattern: '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
+      - pattern: '\b(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]+)'
+
+  - id: security-headers
+    name: Security headers, CORS & CSP
+    severity: high
+    description: Browser-side protections against XSS, clickjacking and cross-origin data theft.
+    guidance: Check that CORS does not allow arbitrary origins with credentials and CSP/HSTS are not weakened.
+    content:
+      - pattern: '(Access-Control-Allow-Origin|cors\(|allowedOrigins|Content-Security-Policy|helmet\(|Strict-Transport-Security|X-Frame-Options|frame-ancestors)'
+        flags: i
+
+  - id: injection-sinks
+    name: Raw queries, shell and eval
+    severity: high
+    description: Dynamic SQL, shell execution and code evaluation are common injection sinks.
+    guidance: Confirm user input cannot reach these calls unsanitised; prefer parameterised queries.
+    contentScope: added
+    content:
+      - pattern: '\b(eval\(|new Function\(|child_process|exec(Sync)?\(|spawn\(|subprocess\.|os\.system\(|Runtime\.getRuntime\(\)\.exec|\$queryRawUnsafe|\.raw\(|dangerouslySetInnerHTML|innerHTML\s*=)'
+
+  - id: payments
+    name: Payment processing
+    severity: critical
+    description: Card data, payouts and payment provider integrations.
+    match: any
+    paths: ["**/payments/**", "**/billing/**", "**/checkout/**"]
+    excludePaths: ["**/*.css", "**/*.scss", "**/*.svg", "**/*.md"]
+    content:
+      - pattern: '\b(stripe|braintree|adyen|paypal|card_?number|cvv|pan\b)'
+        flags: i
+
+  - id: infrastructure-iam
+    name: Infrastructure & IAM
+    severity: high
+    description: Cloud permissions, network exposure and infrastructure-as-code.
+    guidance: Look for wildcard IAM permissions, public buckets and security groups open to 0.0.0.0/0.
+    match: any
+    paths: ["**/*.tf", "**/terraform/**", "**/iam/**", "**/k8s/**/*rbac*", "**/helm/**/values*.yaml"]
+    content:
+      - pattern: '("Action"\s*:\s*"\*"|0\.0\.0\.0/0|public-read|privileged:\s*true|hostNetwork:\s*true)'
+
+  - id: ci-pipeline
+    name: CI/CD pipeline
+    severity: medium
+    description: Build pipelines have access to deployment credentials.
+    paths: [".github/workflows/**", ".gitlab-ci.yml", "Jenkinsfile", ".circleci/**", "buildkite/**"]
+
+  - id: dependencies
+    name: Dependency changes
+    severity: medium
+    description: New or updated third-party packages (supply chain).
+    priorityOnly: true
+    paths: ["**/package.json", "**/requirements*.txt", "**/pyproject.toml", "**/go.mod", "**/Gemfile", "**/pom.xml", "**/build.gradle*", "**/Cargo.toml"]
