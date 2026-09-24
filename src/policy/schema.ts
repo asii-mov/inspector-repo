@@ -34,6 +34,25 @@ const contentPatternSchema = z.union([
     .strict(),
 ]);
 
+/**
+ * Pull request conditions. Each list is a set of branch globs; an empty list places no restriction.
+ * Example: `{ baseBranches: [main, "release/*"] }` only applies to pull requests into those branches.
+ */
+export const conditionsSchema = z
+  .object({
+    /** Only pull requests targeting (merging into) one of these branches. */
+    baseBranches: z.array(z.string().min(1)).default([]),
+    /** Never pull requests targeting one of these branches. */
+    excludeBaseBranches: z.array(z.string().min(1)).default([]),
+    /** Only pull requests coming from one of these branches. */
+    headBranches: z.array(z.string().min(1)).default([]),
+    /** Never pull requests coming from one of these branches. */
+    excludeHeadBranches: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type Conditions = z.infer<typeof conditionsSchema>;
+
 export const ruleSchema = z
   .object({
     /** Stable identifier, used in reports, fingerprints and bypass records. */
@@ -49,14 +68,20 @@ export const ruleSchema = z
     paths: z.array(z.string().min(1)).default([]),
     /** Glob patterns that exclude files from this rule (e.g. tests). */
     excludePaths: z.array(z.string().min(1)).default([]),
-    /** Regular expressions matched against changed lines of the diff. */
+    /**
+     * Regular expressions matched against the whole file. When one matches, the file is part of
+     * the component and ANY change to it is flagged, e.g. every file that imports `passport`.
+     * Also matches when the change removes the marker (the file was part of the component).
+     */
+    fileContent: z.array(contentPatternSchema).default([]),
+    /** Regular expressions matched against changed lines of the diff only. */
     content: z.array(contentPatternSchema).default([]),
     /** Which changed lines `content` is matched against. */
     contentScope: z.enum(['added', 'removed', 'both']).default('both'),
     /**
-     * How `paths` and `content` combine when both are set.
-     * `all`: the file must match a path AND contain a matching changed line.
-     * `any`: either is enough.
+     * How `paths`, `fileContent` and `content` combine when more than one is set.
+     * `all`: every one that is set must match.
+     * `any`: one is enough.
      */
     match: z.enum(['all', 'any']).default('all'),
     /** Restrict the rule to repositories matching these `owner/repo` globs. */
@@ -65,10 +90,12 @@ export const ruleSchema = z
     excludeRepositories: z.array(z.string().min(1)).default([]),
     /** Only apply this rule in priority repositories. */
     priorityOnly: z.boolean().default(false),
+    /** Only apply the rule to pull requests meeting these conditions, e.g. PRs into `main`. */
+    when: conditionsSchema.optional(),
   })
   .strict()
-  .refine((rule) => rule.paths.length > 0 || rule.content.length > 0, {
-    message: 'a rule must define at least one of `paths` or `content`',
+  .refine((rule) => rule.paths.length > 0 || rule.fileContent.length > 0 || rule.content.length > 0, {
+    message: 'a rule must define at least one of `paths`, `fileContent` or `content`',
   });
 
 export type Rule = z.infer<typeof ruleSchema>;
@@ -112,8 +139,15 @@ export const settingsSchema = z
     securityTeam: principalsSchema.default({ teams: [], users: [] }),
     /** Automatically request review from the security team when a PR is blocked. */
     requestReview: z.boolean().default(true),
+    /**
+     * Only inspect pull requests meeting these conditions, e.g. `{ baseBranches: [main] }`.
+     * Other pull requests get a passing "not applicable" status.
+     */
+    when: conditionsSchema.optional(),
     /** Paths never inspected by any rule (e.g. vendored code, lockfiles). */
     ignorePaths: z.array(z.string().min(1)).default([]),
+    /** Maximum number of files whose full content is read for `fileContent` rules. */
+    fileContentLimit: z.number().int().min(0).max(3000).default(300),
     /**
      * Built-in rule that flags changes to the inspector's own configuration, the workflow
      * running it and CODEOWNERS, so the gate cannot be quietly weakened in a pull request.

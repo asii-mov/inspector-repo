@@ -62,12 +62,16 @@ function renderExcerpt(chunks: ExcerptChunk[]): string {
 function triggerDescription(file: FileMatch): string {
   const parts: string[] = [];
   if (file.pathPatterns.length > 0) parts.push(`path ${file.pathPatterns.map(code).join(', ')}`);
+  if (file.fileMarker) {
+    const { matched, line, version } = file.fileMarker;
+    parts.push(version === 'head' ? `file contains ${code(matched)} (line ${line})` : `change removes ${code(matched)} (old line ${line})`);
+  }
   if (file.matchedLines.length > 0) {
     const terms = [...new Set(file.matchedLines.map((line) => line.matched))];
     const lineCount = file.matchedLines.length;
     parts.push(`content ${terms.slice(0, 3).map(code).join(', ')}${terms.length > 3 ? ', …' : ''} (${lineCount} line${lineCount === 1 ? '' : 's'})`);
   }
-  if (file.contentUnavailable) parts.push('_diff not available_');
+  if (file.contentUnavailable) parts.push('_content not inspected_');
   return parts.join('; ');
 }
 
@@ -120,6 +124,8 @@ function headline(decision: Decision, scan: ScanResult): string {
   const count = scan.blocking.length;
   const components = `${count} security-critical component${count === 1 ? '' : 's'}`;
   switch (decision.state) {
+    case 'skipped':
+      return '### ⏭️ Security Inspector: not applicable to this pull request';
     case 'clear':
       return scan.findings.length === 0
         ? '### ✅ Security Inspector: no security-critical components modified'
@@ -191,7 +197,9 @@ export function renderReport(scan: ScanResult, decision: Decision, context: Repo
     );
   }
 
-  if (scan.blocking.length > 0) {
+  if (scan.skipped) {
+    out.push(`This pull request was not inspected because ${escapeHtml(scan.skipped)}.`, '');
+  } else if (scan.blocking.length > 0) {
     out.push(summaryTable(scan.blocking), '');
     out.push(...nextSteps(decision, scan, context), '');
     out.push('<details open><summary><strong>Flagged changes</strong></summary>', '');
@@ -210,6 +218,11 @@ export function renderReport(scan: ScanResult, decision: Decision, context: Repo
     out.push('</details>', '');
   }
 
+  if (scan.filesWithoutContent.length > 0) {
+    const listed = scan.filesWithoutContent.slice(0, 5).map(code).join(', ');
+    const more = scan.filesWithoutContent.length > 5 ? `, and ${scan.filesWithoutContent.length - 5} more` : '';
+    out.push(`<sub>⚠️ Could not read ${scan.filesWithoutContent.length} file(s) (${listed}${more}), so rules that identify components by file content only used their path and changed lines there.</sub>`, '');
+  }
   if (scan.filesWithoutPatch.length > 0) {
     out.push(`<sub>${scan.filesWithoutPatch.length} file(s) had no diff available (binary or too large) and were checked by path only.</sub>`, '');
   }
@@ -226,12 +239,18 @@ export function renderReport(scan: ScanResult, decision: Decision, context: Repo
 export function renderText(scan: ScanResult, decision: Decision): string {
   const out: string[] = [];
   out.push(`${decision.state.toUpperCase()}: ${decision.description}`);
+  if (scan.filesWithoutContent.length > 0) out.push(`Could not read (content rules used path/changed lines only): ${scan.filesWithoutContent.join(', ')}`);
   if (scan.profile.priority) out.push(`Priority repository: ${scan.profile.groups.map((group) => group.name).join(', ')}`);
   for (const finding of scan.findings) {
     out.push('');
     out.push(`[${finding.severity}${finding.blocking ? ', blocking' : ''}] ${finding.rule.name} (${finding.rule.id}) ${changes(finding.additions, finding.deletions)}`);
     for (const file of finding.files) {
       out.push(`  ${file.status.padEnd(8)} ${file.filename}  ${changes(file.additions, file.deletions)}`);
+      if (file.pathPatterns.length > 0) out.push(`      path matches ${file.pathPatterns.join(', ')}`);
+      if (file.fileMarker) {
+        const { matched, line, version } = file.fileMarker;
+        out.push(version === 'head' ? `      file contains "${matched}" (line ${line})` : `      change removes "${matched}" (old line ${line})`);
+      }
       for (const line of file.matchedLines.slice(0, 5)) {
         const marker = line.type === 'added' ? '+' : '-';
         out.push(`      ${marker}${String(line.line).padStart(5)}: ${line.content.trim().slice(0, 120)}   [matched "${line.matched}"]`);

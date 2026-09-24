@@ -23,7 +23,7 @@ describe('policy loading', () => {
     const run = () => parsePolicy('settings: { blockOn: severe }\nrules:\n  - { id: a, name: A }\n  - { id: c, name: C, bogus: 1, paths: [y] }', 'p.yml');
     expect(run).toThrow(PolicyError);
     expect(run).toThrow(/settings\.blockOn/);
-    expect(run).toThrow(/rules\.0: a rule must define at least one of `paths` or `content`/);
+    expect(run).toThrow(/rules\.0: a rule must define at least one of `paths`, `fileContent` or `content`/);
     expect(run).toThrow(/bogus/);
   });
 
@@ -56,23 +56,36 @@ describe('policy loading', () => {
 
 describe('example policy behaviour', () => {
   const policy = parsePolicy(readFileSync('examples/security-inspector-policy.yml', 'utf8'), 'example');
-  const run = (repo: string, files: ReturnType<typeof file>[]) => scan(policy, resolveRepositoryProfile(policy, repo), files);
+  const intoMain = { pullRequest: { baseBranch: 'main', headBranch: 'feature' } };
+  const run = (repo: string, files: ReturnType<typeof file>[], options = intoMain) => scan(policy, resolveRepositoryProfile(policy, repo), files, options);
 
-  it('flags authentication changes and ignores UI changes', () => {
+  it('ignores UI changes', () => {
     expect(run('acme/web', [file('src/components/Button.tsx', { added: ['<button className="primary">Save</button>'] }), file('src/styles/app.css', { added: ['color: red;'] })]).findings).toEqual([]);
-    const auth = run('acme/web', [file('src/server/users.ts', { removed: ['const ok = await bcrypt.compare(pw, hash);'], added: ['const ok = pw === hash;'] })]);
-    expect(auth.blocking.map((finding) => finding.rule.id)).toEqual(['authentication']);
   });
 
-  it('flags hardcoded secrets and disabled TLS verification', () => {
-    const result = run('acme/web', [file('src/client.ts', { added: ['const apiKey = "sk_live_1234567890abcdef";', 'https.request({ rejectUnauthorized: false })'] })]);
-    expect(result.blocking.map((finding) => finding.rule.id).sort()).toEqual(['cryptography', 'secrets']);
+  it('flags any change to a file that is authentication code, even an innocent-looking one', () => {
+    const content = 'import bcrypt from "bcrypt";\nexport function display(user) {\n  return user.name;\n}\n';
+    const result = run('acme/web', [file('src/services/users.ts', { removed: ['return user.name;'], added: ['return user.fullName;'] }, { content })]);
+    expect(result.blocking.map((finding) => finding.rule.id)).toEqual(['authentication']);
+    expect(result.blocking[0]!.files[0]!.fileMarker).toMatchObject({ matched: 'from "bcrypt"', line: 1, version: 'head' });
+  });
+
+  it('flags removing the last permission check from a file', () => {
+    const result = run('acme/web', [file('src/routes/users.ts', { removed: ['if (!req.user.isAdmin) return res.sendStatus(403);'] }, { content: 'export const remove = (req, res) => res.send(del(req.params.id));\n' })]);
+    expect(result.blocking.map((finding) => finding.rule.id)).toEqual(['authorization']);
+    expect(result.blocking[0]!.files[0]!.fileMarker?.version).toBe('base');
   });
 
   it('applies priority rules to payment repositories', () => {
     const result = run('acme/payments-core', [file('package.json', { added: ['"left-pad": "^1.0.0"'] })]);
     expect(result.profile.priority).toBe(true);
     expect(result.blocking.map((finding) => [finding.rule.id, finding.severity])).toEqual([['dependencies', 'high']]);
+  });
+
+  it('only inspects pull requests into main and release branches', () => {
+    const auth = [file('src/auth/login.ts', { added: ['x'] })];
+    expect(run('acme/web', auth, { pullRequest: { baseBranch: 'release/2.1', headBranch: 'fix' } }).blocking).toHaveLength(1);
+    expect(run('acme/web', auth, { pullRequest: { baseBranch: 'dev', headBranch: 'fix' } }).skipped).toContain('`dev`');
   });
 });
 

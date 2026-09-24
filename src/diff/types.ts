@@ -27,4 +27,9 @@ export interface ChangedFile {
   hunks: Hunk[];
   /** False for binary files or diffs too large for GitHub to return. */
   patchAvailable: boolean;
+  /**
+   * Full text of the file, for `fileContent` rules: the head version, or the base version for
+   * deleted files. Undefined when it was not needed or could not be read.
+   */
+  content?: string;
 }

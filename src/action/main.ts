@@ -3,7 +3,7 @@ import * as github from '@actions/github';
 import { encodeBypassRecord, parseCommand, REPORT_MARKER } from '../engine/bypass.js';
 import { evaluate, type Decision } from '../engine/evaluate.js';
 import { resolveRepositoryProfile } from '../engine/priority.js';
-import { blockingPaths, scan, type ScanResult } from '../engine/scan.js';
+import { blockingPaths, contentRequests, scan, type ScanOptions, type ScanResult } from '../engine/scan.js';
 import { bypassPrincipals, checkBypassCommand, collectApprovals, findBypass, type CommentData } from '../engine/signoff.js';
 import { PolicyError } from '../policy/load.js';
 import type { Settings } from '../policy/schema.js';
@@ -14,6 +14,7 @@ import {
   httpStatus,
   listPullRequestFiles,
   MAX_PULL_REQUEST_FILES,
+  readFileContents,
   mentions,
   parseTeam,
   type Octokit,
@@ -71,7 +72,11 @@ function resolveTrigger(inputs: Inputs): Trigger | undefined {
     case 'pull_request':
     case 'pull_request_target':
       if (!payload.pull_request) return undefined;
-      return { pullNumber: payload.pull_request.number, contentChanged: ['opened', 'reopened', 'synchronize', 'ready_for_review'].includes(payload.action ?? '') };
+      // `edited` matters when the base branch changes: the diff and any `when` conditions change with it.
+      return {
+        pullNumber: payload.pull_request.number,
+        contentChanged: ['opened', 'reopened', 'synchronize', 'ready_for_review', 'edited'].includes(payload.action ?? ''),
+      };
     case 'pull_request_review':
       if (!payload.pull_request) return undefined;
       return { pullNumber: payload.pull_request.number, contentChanged: false };
@@ -266,8 +271,16 @@ async function run(): Promise<void> {
   if (pull.changed_files > MAX_PULL_REQUEST_FILES) {
     core.warning(`This pull request changes ${pull.changed_files} files; GitHub only lists the first ${MAX_PULL_REQUEST_FILES}, the rest were not inspected.`);
   }
-  const integrityPaths = [inputs.localConfigPath, currentWorkflowPath(ref)].filter((path): path is string => Boolean(path));
-  const scanResult = scan(policy, profile, files, { integrityPaths });
+  const scanOptions: ScanOptions = {
+    integrityPaths: [inputs.localConfigPath, currentWorkflowPath(ref)].filter((path): path is string => Boolean(path)),
+    pullRequest: { baseBranch: pull.base.ref, headBranch: pull.head.ref },
+  };
+  const requests = contentRequests(policy, profile, files, scanOptions);
+  if (requests.length > 0) {
+    await readFileContents(octokit, ref, requests, { head: headSha, base: pull.base.sha }, (message) => core.debug(message));
+  }
+  const scanResult = scan(policy, profile, files, scanOptions);
+  if (scanResult.skipped) core.info(`Policy does not apply: ${scanResult.skipped}`);
 
   const authorizer = new Authorizer(orgOctokit, ref.owner, (message) => core.warning(message));
   const comments = (await octokit.paginate(octokit.rest.issues.listComments, { ...ref, issue_number: pull.number, per_page: 100 })).map(toComment);

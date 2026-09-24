@@ -5,8 +5,15 @@ AI writes more of the code. The security team lists the components they care abo
 flags every pull request that touches one of them and blocks merge until the security team has
 reviewed it. Everything else, like UI tweaks, copy changes and styling, merges without waiting on security.
 
-- **You decide what's critical.** Rules match on file paths, on changed lines (regular
-  expressions), or both, e.g. "anything under `auth/`" or "any line calling `jwt.sign`".
+It doesn't try to decide whether a change is dangerous. It watches **components**, and **any**
+change to a watched component is flagged: a refactor of the login code gets the same review as a
+change to its password check.
+
+- **You decide what's critical.** A rule describes a component by where it lives
+  ("anything under `auth/`") and/or what its files contain ("any file that imports `passport`
+  or defines `login()`"), so auth code outside the auth folder is covered too.
+- **Conditions.** Rules, or the whole policy, can be limited to certain pull requests, e.g. only
+  PRs into `main` or `release/*`.
 - **Priority repositories.** Mark sensitive repositories (PCI, identity, …) for stricter treatment:
   a lower severity threshold, severity boosts, more approvals, no bypass, extra rules.
 - **Clear reports.** A single pull request comment lists each flagged component, why it matters,
@@ -42,8 +49,8 @@ reviewed it. Everything else, like UI tweaks, copy changes and styling, merges w
 
 Create a repository the security team controls, e.g. `acme/security-policies`, and add
 `security-inspector-policy.yml`. Start from [`examples/security-inspector-policy.yml`](examples/security-inspector-policy.yml),
-which covers authentication, authorisation, sessions, cryptography, secrets, CORS/CSP, injection
-sinks, payments, infrastructure/IAM, CI pipelines and dependencies.
+which covers authentication, authorisation, sessions/CSRF, cryptography/TLS, secrets management,
+security headers/CORS, payments, infrastructure/IAM, CI pipelines and dependencies.
 
 ```yaml
 version: 1
@@ -51,6 +58,7 @@ settings:
   blockOn: high                     # findings at/above this severity need security review
   securityTeam: { teams: [acme/security] }
   bypass: { teams: [acme/engineering-leads], minReasonLength: 15 }
+  when: { baseBranches: [main, "release/*"] }   # only PRs into these branches are inspected
 
 priorityRepositories:
   - name: payments
@@ -65,12 +73,13 @@ rules:
     name: Authentication
     severity: critical
     description: Login, credential verification and token issuance decide who a user is.
-    guidance: Check for bypassable checks, weakened password handling and token lifetime changes.
-    match: any                      # path OR content is enough
+    guidance: Review every change, including refactors.
+    match: any                      # a matching path OR file content is enough
     paths: ["**/auth/**", "**/*login*"]
     excludePaths: ["**/*.test.*", "**/*.css"]
-    content:
-      - { pattern: '\b(jwt\.(sign|verify)|bcrypt|argon2|passport\.authenticate)', flags: i }
+    fileContent:                    # ANY change to a file containing one of these is flagged
+      - '(from|require\()\s*["''](passport|jsonwebtoken|bcrypt|argon2)["'']'
+      - '\b(function|def)\s+\w*([Ll]ogin|[Aa]uthenticate|verify_?[Pp]assword)\w*\s*\('
 ```
 
 Check it before committing:
@@ -86,7 +95,7 @@ Copy [`examples/workflows/security-inspector.yml`](examples/workflows/security-i
 
 ```yaml
 on:
-  pull_request_target: { types: [opened, synchronize, reopened, ready_for_review] }
+  pull_request_target: { types: [opened, synchronize, reopened, ready_for_review, edited] }
   pull_request_review: { types: [submitted, dismissed] }
   issue_comment: { types: [created] }
 
@@ -94,7 +103,9 @@ permissions: { contents: read, pull-requests: write, issues: write, statuses: wr
 
 jobs:
   inspect:
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    if: >-
+      (github.event_name != 'issue_comment' || github.event.issue.pull_request) &&
+      (github.event.action != 'edited' || github.event.changes.base)
     runs-on: ubuntu-latest
     steps:
       - uses: asii-mov/inspector-repo@v1
@@ -114,6 +125,7 @@ green.
 
 | State | When | Status |
 |---|---|---|
+| `skipped` | The pull request doesn't meet `settings.when` (e.g. it targets `dev`) | ✅ success ("Not applicable") |
 | `clear` | No finding at or above `blockOn` (after priority boosts) | ✅ success |
 | `approved` | Enough security reviewers approved, none requested changes, and no flagged file changed since | ✅ success |
 | `bypassed` | An authorised user ran the bypass command and the flagged changes are the same as when they did | ✅ success |
@@ -146,16 +158,43 @@ green.
 | `description` | | Why it's security critical. |
 | `guidance` | | What the reviewer should check. |
 | `severity` | `high` | `low`, `medium`, `high` or `critical`. |
-| `paths` | `[]` | Glob patterns ([picomatch](https://github.com/micromatch/picomatch)) matched case-insensitively against the file path; renames also match the old path. |
+| `paths` | `[]` | Glob patterns ([picomatch](https://github.com/micromatch/picomatch)) matched case-insensitively against the file path; renames also match the old path. Any change to a matching file is flagged. |
+| `fileContent` | `[]` | Regular expressions matched against the **whole file**. If one matches, the file is part of the component and **any** change to it is flagged, even if the changed lines look harmless. A change that removes the marker also counts. `^`/`$` anchor to lines. |
 | `excludePaths` | `[]` | Globs excluded from this rule (tests, docs, styles…). |
-| `content` | `[]` | Regular expressions matched against changed lines. Either a string or `{ pattern, flags }`. |
-| `contentScope` | `both` | Match `added` lines, `removed` lines, or `both`. |
-| `match` | `all` | With both `paths` and `content`: `all` needs a path match **and** a matching line; `any` needs either. |
+| `content` | `[]` | Regular expressions matched against the **changed lines** only, to catch specific edits anywhere in the codebase. Either a string or `{ pattern, flags }` (as are `fileContent` entries). |
+| `contentScope` | `both` | Which changed lines `content` checks: `added`, `removed`, or `both`. |
+| `match` | `all` | When more than one of `paths`, `fileContent` and `content` is set: `all` needs every one to match, `any` needs one. For "any change to this component", use `any`. |
+| `when` | | Pull request conditions, see below. |
 | `repositories` / `excludeRepositories` | `[]` | Limit the rule to (or exclude) `owner/repo` globs. |
 | `priorityOnly` | `false` | Only apply in priority repositories. |
 
-A rule needs at least one of `paths` or `content`. When GitHub has no diff for a file (binary or
-very large), path matches still count and the report says the content couldn't be inspected.
+A rule needs at least one of `paths`, `fileContent` or `content`.
+
+`fileContent` reads each changed file at the PR's head commit (one API call per file, up to
+`settings.fileContentLimit`, files up to 1 MB). Deleted files are checked through the diff,
+without an extra read. Files that can't be read are listed in the report. When a `match: all`
+rule can't check a file's content but its other criteria match, the file is still flagged.
+
+### Conditions (`when`)
+
+`when` can be set on a rule, or under `settings` for the whole policy. Each list takes branch
+globs, and an empty list means no restriction.
+
+```yaml
+when:
+  baseBranches: [main, "release/*"]        # PRs merging into these branches
+  excludeBaseBranches: []
+  headBranches: []                         # PRs coming from these branches
+  excludeHeadBranches: ["renovate/**"]
+```
+
+- On a **rule**: the rule only applies to matching pull requests.
+- Under **`settings`**: other pull requests aren't inspected at all and get a passing
+  "Not applicable" status.
+
+The example workflow re-runs when a pull request's target branch changes, so retargeting a PR to
+`main` triggers the check. The CLI uses the branch names from `--base`/`--head`, or
+`--target-branch`/`--source-branch`.
 
 ### Priority repositories
 
@@ -179,7 +218,9 @@ If a repository matches several groups, the strictest value of each setting appl
 | `staleApprovals` | `flagged-changes` | `flagged-changes` or `any-change`; see above. |
 | `securityTeam.teams` / `.users` | `[]` | Security reviewers. Teams are `org/slug` or `slug`. |
 | `requestReview` | `true` | Request review from the security team when a PR gets blocked. |
+| `when` | | Only inspect matching pull requests (see Conditions). |
 | `ignorePaths` | `[]` | Globs never inspected (vendored code, snapshots, …). |
+| `fileContentLimit` | `300` | Max files read in full for `fileContent` rules per run. |
 | `integrityRule` | `true` | Built-in critical rule for the inspector config, the workflow running it and `CODEOWNERS`. |
 | `bypass.enabled` / `.command` / `.teams` / `.users` / `.includeSecurityTeam` / `.allowAuthor` / `.minReasonLength` | `true` / `/security-bypass` / `[]` / `[]` / `true` / `false` / `10` | Bypass behaviour. |
 | `recheckCommand` | `/security-recheck` | Re-evaluate command. |
@@ -259,6 +300,11 @@ npm run typecheck
 npm test          # unit tests + an end-to-end run of the action against a fake GitHub API
 npm run build     # bundles dist/index.mjs (action) and dist/cli.mjs (CLI); commit dist/
 ```
+
+Synthetic pull request scenarios (a realistic set of auth, UI, infra and dependency changes run
+against the example policy) live on the [`tests`](https://github.com/asii-mov/inspector-repo/tree/tests)
+branch, separate from `main`. To run them against the current code, merge `main` into `tests`
+and run `npm test` there.
 
 | Path | Contents |
 |---|---|

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveRepositoryProfile } from '../src/engine/priority.js';
-import { blockingKeys, INTEGRITY_RULE_ID, scan } from '../src/engine/scan.js';
+import { evaluate } from '../src/engine/evaluate.js';
+import { blockingKeys, contentRequests, INTEGRITY_RULE_ID, scan } from '../src/engine/scan.js';
 import { file, policyFrom } from './helpers.js';
 
 const policy = policyFrom(`
@@ -150,5 +151,118 @@ describe('scan', () => {
     const match = result.blocking[0]!.files[0]!;
     expect(match.excerpt.flatMap((chunk) => chunk.lines)).toHaveLength(10);
     expect(match.excerptTruncated).toBe(true);
+  });
+});
+
+describe('fileContent rules', () => {
+  const contentPolicy = policyFrom(`
+rules:
+  - id: auth
+    name: Authentication
+    severity: critical
+    match: any
+    paths: ["src/auth/**"]
+    excludePaths: ["**/*.test.ts"]
+    fileContent:
+      - 'from "passport"'
+      - pattern: '^def login'
+  - id: strict
+    name: Strict
+    match: all
+    paths: ["src/secure/**"]
+    fileContent: ['SECURE_MARKER']
+`);
+  const profile = resolveRepositoryProfile(contentPolicy, 'acme/web');
+  const ids = (files: ReturnType<typeof file>[]) => scan(contentPolicy, profile, files).blocking.map((finding) => finding.rule.id);
+
+  it('flags any change to a file containing a marker', () => {
+    const routes = 'import passport from "passport";\nrouter.get("/profile", handler);\n';
+    expect(ids([file('src/server/routes.ts', { removed: ['router.get("/profile", handler);'], added: ['router.get("/me", handler);'] }, { content: routes })])).toEqual(['auth']);
+  });
+
+  it('anchors ^ and $ to lines within the file', () => {
+    expect(ids([file('app/views.py', { added: ['x = 1'] }, { content: 'import os\n\ndef login(request):\n    pass\n' })])).toEqual(['auth']);
+  });
+
+  it('flags a change that removes the marker', () => {
+    expect(ids([file('src/server/routes.ts', { removed: ['import passport from "passport";'] }, { content: 'router.get("/", h);\n' })])).toEqual(['auth']);
+  });
+
+  it('does not flag files without a marker', () => {
+    expect(ids([file('src/server/health.ts', { added: ['x'] }, { content: 'export const ok = true;\n' })])).toEqual([]);
+  });
+
+  it('checks deleted files through their removed lines, without reading them', () => {
+    const deleted = file('src/server/old.ts', { removed: ['import passport from "passport";', 'export {}'] }, { status: 'removed' });
+    expect(contentRequests(contentPolicy, profile, [deleted])).toEqual([]);
+    expect(ids([deleted])).toEqual(['auth']);
+  });
+
+  it('reports files it could not read, and is conservative with match: all', () => {
+    const unread = file('src/secure/a.ts', { added: ['x'] });
+    const result = scan(contentPolicy, profile, [unread, file('src/other.ts', { added: ['y'] })]);
+    expect(result.blocking.map((finding) => finding.rule.id)).toEqual(['strict']);
+    expect(result.blocking[0]!.files[0]!.contentUnavailable).toBe(true);
+    expect(result.filesWithoutContent.sort()).toEqual(['src/other.ts', 'src/secure/a.ts']);
+  });
+
+  it('ignores binary content', () => {
+    expect(ids([file('assets/blob.bin', { added: ['x'] }, { content: 'from "passport"\0\0' })])).toEqual([]);
+  });
+
+  it('requests content only for files a fileContent rule could flag, within the limit', () => {
+    const files = [file('src/a.ts'), file('src/auth/b.test.ts'), file('src/c.ts')];
+    expect(contentRequests(contentPolicy, profile, files).map((request) => request.file.filename)).toEqual(['src/a.ts', 'src/c.ts']);
+    const limited = policyFrom(`
+settings: { fileContentLimit: 1 }
+rules:
+  - { id: a, name: A, fileContent: ['x'] }
+`);
+    expect(contentRequests(limited, resolveRepositoryProfile(limited, 'a/b'), files)).toHaveLength(1);
+  });
+});
+
+describe('when conditions', () => {
+  const conditional = policyFrom(`
+rules:
+  - id: auth
+    name: Authentication
+    severity: critical
+    paths: ["src/auth/**"]
+  - id: deps
+    name: Dependencies
+    severity: high
+    paths: ["package.json"]
+    when:
+      baseBranches: [main]
+      excludeHeadBranches: ["renovate/**"]
+`);
+  const profile = resolveRepositoryProfile(conditional, 'acme/web');
+  const files = [file('src/auth/login.ts', { added: ['x'] }), file('package.json', { added: ['y'] })];
+  const ids = (baseBranch: string, headBranch: string) =>
+    scan(conditional, profile, files, { pullRequest: { baseBranch, headBranch } }).blocking.map((finding) => finding.rule.id);
+
+  it('applies a rule only to matching pull requests', () => {
+    expect(ids('main', 'feature/x')).toEqual(['auth', 'deps']);
+    expect(ids('develop', 'feature/x')).toEqual(['auth']);
+    expect(ids('main', 'renovate/lodash-4.x')).toEqual(['auth']);
+  });
+
+  it('applies every rule when there is no pull request context', () => {
+    expect(scan(conditional, profile, files).blocking).toHaveLength(2);
+  });
+
+  it('skips the whole policy for pull requests it does not cover', () => {
+    const scoped = policyFrom(`
+settings:
+  when: { baseBranches: [main, "release/*"] }
+rules:
+  - { id: auth, name: Authentication, severity: critical, paths: ["src/auth/**"] }
+`);
+    const into = (baseBranch: string) => scan(scoped, resolveRepositoryProfile(scoped, 'a/b'), files, { pullRequest: { baseBranch, headBranch: 'feature' } });
+    expect(into('release/1.2').blocking).toHaveLength(1);
+    const skipped = into('develop');
+    expect(skipped).toMatchObject({ skipped: expect.stringContaining('`develop`'), findings: [], rulesEvaluated: 0 });
+    expect(evaluate({ scan: skipped, approvals: [], changesRequestedBy: [] })).toMatchObject({ state: 'skipped', description: expect.stringContaining('Not applicable') });
   });
 });

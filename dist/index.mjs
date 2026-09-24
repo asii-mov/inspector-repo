@@ -21370,9 +21370,9 @@ var require_picomatch = __commonJS({
     var utils = require_utils2();
     var constants3 = require_constants6();
     var isObject2 = (val) => val && typeof val === "object" && !Array.isArray(val);
-    var picomatch3 = (glob, options, returnState = false) => {
+    var picomatch4 = (glob, options, returnState = false) => {
       if (Array.isArray(glob)) {
-        const fns = glob.map((input2) => picomatch3(input2, options, returnState));
+        const fns = glob.map((input2) => picomatch4(input2, options, returnState));
         const arrayMatcher = (str) => {
           for (const isMatch of fns) {
             const state2 = isMatch(str);
@@ -21388,16 +21388,16 @@ var require_picomatch = __commonJS({
       }
       const opts = options || {};
       const posix = opts.windows;
-      const regex = isState ? picomatch3.compileRe(glob, options) : picomatch3.makeRe(glob, options, false, true);
+      const regex = isState ? picomatch4.compileRe(glob, options) : picomatch4.makeRe(glob, options, false, true);
       const state = regex.state;
       delete regex.state;
       let isIgnored = () => false;
       if (opts.ignore) {
         const ignoreOpts = { ...options, ignore: null, onMatch: null, onResult: null };
-        isIgnored = picomatch3(opts.ignore, ignoreOpts, returnState);
+        isIgnored = picomatch4(opts.ignore, ignoreOpts, returnState);
       }
       const matcher = (input2, returnObject = false) => {
-        const { isMatch, match, output: output2 } = picomatch3.test(input2, regex, options, { glob, posix });
+        const { isMatch, match, output: output2 } = picomatch4.test(input2, regex, options, { glob, posix });
         const result = { glob, state, regex, posix, input: input2, output: output2, match, isMatch };
         if (typeof opts.onResult === "function") {
           opts.onResult(result);
@@ -21423,7 +21423,7 @@ var require_picomatch = __commonJS({
       }
       return matcher;
     };
-    picomatch3.test = (input2, regex, options, { glob, posix } = {}) => {
+    picomatch4.test = (input2, regex, options, { glob, posix } = {}) => {
       if (typeof input2 !== "string") {
         throw new TypeError("Expected input to be a string");
       }
@@ -21440,24 +21440,24 @@ var require_picomatch = __commonJS({
       }
       if (match === false || opts.capture === true) {
         if (opts.matchBase === true || opts.basename === true) {
-          match = picomatch3.matchBase(input2, regex, options, posix);
+          match = picomatch4.matchBase(input2, regex, options, posix);
         } else {
           match = regex.exec(output2);
         }
       }
       return { isMatch: Boolean(match), match, output: output2 };
     };
-    picomatch3.matchBase = (input2, glob, options, posix = options && options.windows) => {
-      const regex = glob instanceof RegExp ? glob : picomatch3.makeRe(glob, options);
+    picomatch4.matchBase = (input2, glob, options, posix = options && options.windows) => {
+      const regex = glob instanceof RegExp ? glob : picomatch4.makeRe(glob, options);
       return regex.test(utils.basename(input2, { windows: posix }));
     };
-    picomatch3.isMatch = (str, patterns, options) => picomatch3(patterns, options)(str);
-    picomatch3.parse = (pattern, options) => {
-      if (Array.isArray(pattern)) return pattern.map((p) => picomatch3.parse(p, options));
+    picomatch4.isMatch = (str, patterns, options) => picomatch4(patterns, options)(str);
+    picomatch4.parse = (pattern, options) => {
+      if (Array.isArray(pattern)) return pattern.map((p) => picomatch4.parse(p, options));
       return parse5(pattern, { ...options, fastpaths: false });
     };
-    picomatch3.scan = (input2, options) => scan2(input2, options);
-    picomatch3.compileRe = (state, options, returnOutput = false, returnState = false) => {
+    picomatch4.scan = (input2, options) => scan2(input2, options);
+    picomatch4.compileRe = (state, options, returnOutput = false, returnState = false) => {
       if (returnOutput === true) {
         return state.output;
       }
@@ -21468,13 +21468,13 @@ var require_picomatch = __commonJS({
       if (state && state.negated === true) {
         source = `^(?!${source}).*$`;
       }
-      const regex = picomatch3.toRegex(source, options);
+      const regex = picomatch4.toRegex(source, options);
       if (returnState === true) {
         regex.state = state;
       }
       return regex;
     };
-    picomatch3.makeRe = (input2, options = {}, returnOutput = false, returnState = false) => {
+    picomatch4.makeRe = (input2, options = {}, returnOutput = false, returnState = false) => {
       if (!input2 || typeof input2 !== "string") {
         throw new TypeError("Expected a non-empty string");
       }
@@ -21485,9 +21485,9 @@ var require_picomatch = __commonJS({
       if (!parsed.output) {
         parsed = parse5(input2, options);
       }
-      return picomatch3.compileRe(parsed, options, returnOutput, returnState);
+      return picomatch4.compileRe(parsed, options, returnOutput, returnState);
     };
-    picomatch3.toRegex = (source, options) => {
+    picomatch4.toRegex = (source, options) => {
       try {
         const opts = options || {};
         return new RegExp(source, opts.flags || (opts.nocase ? "i" : ""));
@@ -21496,8 +21496,8 @@ var require_picomatch = __commonJS({
         return /$^/;
       }
     };
-    picomatch3.constants = constants3;
-    module.exports = picomatch3;
+    picomatch4.constants = constants3;
+    module.exports = picomatch4;
   }
 });
 
@@ -21507,14 +21507,14 @@ var require_picomatch2 = __commonJS({
     "use strict";
     var pico = require_picomatch();
     var utils = require_utils2();
-    function picomatch3(glob, options, returnState = false) {
+    function picomatch4(glob, options, returnState = false) {
       if (options && (options.windows === null || options.windows === void 0)) {
         options = { ...options, windows: utils.isWindows() };
       }
       return pico(glob, options, returnState);
     }
-    Object.assign(picomatch3, pico);
-    module.exports = picomatch3;
+    Object.assign(picomatch4, pico);
+    module.exports = picomatch4;
   }
 });
 
@@ -29693,11 +29693,11 @@ function removeNonChars(variableName) {
   return variableName.replace(/(?:^\W+)|(?:(?<!\W)\W+$)/g, "").split(/,/);
 }
 function extractUrlVariableNames(url2) {
-  const matches = url2.match(urlVariableRegex);
-  if (!matches) {
+  const matches2 = url2.match(urlVariableRegex);
+  if (!matches2) {
     return [];
   }
-  return matches.map(removeNonChars).reduce((a, b) => a.concat(b), []);
+  return matches2.map(removeNonChars).reduce((a, b) => a.concat(b), []);
 }
 function omit(object2, keysToOmit) {
   const result = { __proto__: null };
@@ -30553,8 +30553,8 @@ async function fetchWrapper(requestOptions) {
     data: ""
   };
   if ("deprecation" in responseHeaders) {
-    const matches = responseHeaders.link && responseHeaders.link.match(/<([^<>]+)>; rel="deprecation"/);
-    const deprecationLink = matches && matches.pop();
+    const matches2 = responseHeaders.link && responseHeaders.link.match(/<([^<>]+)>; rel="deprecation"/);
+    const deprecationLink = matches2 && matches2.pop();
     log.warn(
       `[@octokit/request] "${requestOptions.method} ${requestOptions.url}" is deprecated. It is scheduled to be removed on ${responseHeaders.sunset}${deprecationLink ? `. See ${deprecationLink}` : ""}`
     );
@@ -33578,6 +33578,9 @@ function evaluate(input2) {
   const validApprovals = input2.approvals.filter((approval) => approval.valid);
   const staleApprovals = input2.approvals.filter((approval) => !approval.valid);
   const base = { requiredApprovals, validApprovals, staleApprovals, changesRequestedBy: input2.changesRequestedBy, bypass: input2.bypass };
+  if (scan2.skipped) {
+    return { ...base, state: "skipped", description: truncate(`Not applicable: ${scan2.skipped.replace(/`/g, "")}`, STATUS_DESCRIPTION_LIMIT) };
+  }
   if (scan2.blocking.length === 0) {
     const description = scan2.nonBlocking.length === 0 ? "No security-critical components modified" : `${scan2.nonBlocking.length} low-risk finding(s); security review not required`;
     return { ...base, state: "clear", description };
@@ -37366,16 +37369,16 @@ var $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
   };
 });
 function handleExclusiveUnionResults(results, final, inst, ctx) {
-  const matches = [];
+  const matches2 = [];
   for (let i = 0; i < results.length; i++) {
     if (results[i].issues.length === 0)
-      matches.push(i);
+      matches2.push(i);
   }
-  if (matches.length === 1) {
-    final.value = results[matches[0]].value;
+  if (matches2.length === 1) {
+    final.value = results[matches2[0]].value;
     return final;
   }
-  if (matches.length === 0) {
+  if (matches2.length === 0) {
     final.issues.push({
       code: "invalid_union",
       input: final.value,
@@ -37389,7 +37392,7 @@ function handleExclusiveUnionResults(results, final, inst, ctx) {
       inst,
       errors: [],
       inclusive: false,
-      matches
+      matches: matches2
     });
   }
   return final;
@@ -52588,20 +52591,20 @@ function checkArrayGuards(arraySchema, guards) {
     if (guards.containsSchema) {
       const minContains = guards.minContains ?? 1;
       const ceiling = guards.maxContains !== void 0 ? guards.maxContains + 1 : Number.POSITIVE_INFINITY;
-      let matches = 0;
+      let matches2 = 0;
       for (const item of items) {
-        if (guards.containsSchema.safeParse(item).success && ++matches >= ceiling)
+        if (guards.containsSchema.safeParse(item).success && ++matches2 >= ceiling)
           break;
       }
-      if (matches < minContains) {
+      if (matches2 < minContains) {
         payload.issues.push({
           code: "custom",
-          message: `Array must contain at least ${minContains} matching ${plural(minContains)}; found ${matches}`,
+          message: `Array must contain at least ${minContains} matching ${plural(minContains)}; found ${matches2}`,
           input: items,
           continue: true
         });
       }
-      if (guards.maxContains !== void 0 && matches > guards.maxContains) {
+      if (guards.maxContains !== void 0 && matches2 > guards.maxContains) {
         payload.issues.push({
           code: "custom",
           message: `Array must contain at most ${guards.maxContains} matching ${plural(guards.maxContains)}`,
@@ -53295,6 +53298,16 @@ var contentPatternSchema = external_exports.union([
     flags: external_exports.string().regex(/^[dgimsuvy]*$/).optional()
   }).strict()
 ]);
+var conditionsSchema = external_exports.object({
+  /** Only pull requests targeting (merging into) one of these branches. */
+  baseBranches: external_exports.array(external_exports.string().min(1)).default([]),
+  /** Never pull requests targeting one of these branches. */
+  excludeBaseBranches: external_exports.array(external_exports.string().min(1)).default([]),
+  /** Only pull requests coming from one of these branches. */
+  headBranches: external_exports.array(external_exports.string().min(1)).default([]),
+  /** Never pull requests coming from one of these branches. */
+  excludeHeadBranches: external_exports.array(external_exports.string().min(1)).default([])
+}).strict();
 var ruleSchema = external_exports.object({
   /** Stable identifier, used in reports, fingerprints and bypass records. */
   id: external_exports.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*$/, 'rule ids may only contain letters, digits, ".", "_" and "-"'),
@@ -53309,14 +53322,20 @@ var ruleSchema = external_exports.object({
   paths: external_exports.array(external_exports.string().min(1)).default([]),
   /** Glob patterns that exclude files from this rule (e.g. tests). */
   excludePaths: external_exports.array(external_exports.string().min(1)).default([]),
-  /** Regular expressions matched against changed lines of the diff. */
+  /**
+   * Regular expressions matched against the whole file. When one matches, the file is part of
+   * the component and ANY change to it is flagged, e.g. every file that imports `passport`.
+   * Also matches when the change removes the marker (the file was part of the component).
+   */
+  fileContent: external_exports.array(contentPatternSchema).default([]),
+  /** Regular expressions matched against changed lines of the diff only. */
   content: external_exports.array(contentPatternSchema).default([]),
   /** Which changed lines `content` is matched against. */
   contentScope: external_exports.enum(["added", "removed", "both"]).default("both"),
   /**
-   * How `paths` and `content` combine when both are set.
-   * `all`: the file must match a path AND contain a matching changed line.
-   * `any`: either is enough.
+   * How `paths`, `fileContent` and `content` combine when more than one is set.
+   * `all`: every one that is set must match.
+   * `any`: one is enough.
    */
   match: external_exports.enum(["all", "any"]).default("all"),
   /** Restrict the rule to repositories matching these `owner/repo` globs. */
@@ -53324,9 +53343,11 @@ var ruleSchema = external_exports.object({
   /** Never apply the rule to repositories matching these `owner/repo` globs. */
   excludeRepositories: external_exports.array(external_exports.string().min(1)).default([]),
   /** Only apply this rule in priority repositories. */
-  priorityOnly: external_exports.boolean().default(false)
-}).strict().refine((rule) => rule.paths.length > 0 || rule.content.length > 0, {
-  message: "a rule must define at least one of `paths` or `content`"
+  priorityOnly: external_exports.boolean().default(false),
+  /** Only apply the rule to pull requests meeting these conditions, e.g. PRs into `main`. */
+  when: conditionsSchema.optional()
+}).strict().refine((rule) => rule.paths.length > 0 || rule.fileContent.length > 0 || rule.content.length > 0, {
+  message: "a rule must define at least one of `paths`, `fileContent` or `content`"
 });
 var priorityGroupSchema = external_exports.object({
   /** Label for the group, e.g. "payments" or "pci". */
@@ -53360,8 +53381,15 @@ var settingsSchema = external_exports.object({
   securityTeam: principalsSchema.default({ teams: [], users: [] }),
   /** Automatically request review from the security team when a PR is blocked. */
   requestReview: external_exports.boolean().default(true),
+  /**
+   * Only inspect pull requests meeting these conditions, e.g. `{ baseBranches: [main] }`.
+   * Other pull requests get a passing "not applicable" status.
+   */
+  when: conditionsSchema.optional(),
   /** Paths never inspected by any rule (e.g. vendored code, lockfiles). */
   ignorePaths: external_exports.array(external_exports.string().min(1)).default([]),
+  /** Maximum number of files whose full content is read for `fileContent` rules. */
+  fileContentLimit: external_exports.number().int().min(0).max(3e3).default(300),
   /**
    * Built-in rule that flags changes to the inspector's own configuration, the workflow
    * running it and CODEOWNERS, so the gate cannot be quietly weakened in a pull request.
@@ -53437,10 +53465,33 @@ function resolveRepositoryProfile(policy, repository) {
 }
 
 // src/engine/scan.ts
+var import_picomatch3 = __toESM(require_picomatch2(), 1);
+
+// src/engine/conditions.ts
 var import_picomatch2 = __toESM(require_picomatch2(), 1);
+var matches = (globs, branch) => globs.length > 0 && import_picomatch2.default.isMatch(branch, globs, { dot: true });
+function checkConditions(when, pr) {
+  if (!when || !pr) return { met: true };
+  if (when.baseBranches.length > 0 && !matches(when.baseBranches, pr.baseBranch)) {
+    return { met: false, reason: `the pull request targets \`${pr.baseBranch}\` (only ${when.baseBranches.map((b) => `\`${b}\``).join(", ")} are inspected)` };
+  }
+  if (matches(when.excludeBaseBranches, pr.baseBranch)) {
+    return { met: false, reason: `pull requests into \`${pr.baseBranch}\` are excluded` };
+  }
+  if (when.headBranches.length > 0 && !matches(when.headBranches, pr.headBranch)) {
+    return { met: false, reason: `the source branch \`${pr.headBranch}\` is not inspected (only ${when.headBranches.map((b) => `\`${b}\``).join(", ")})` };
+  }
+  if (matches(when.excludeHeadBranches, pr.headBranch)) {
+    return { met: false, reason: `pull requests from \`${pr.headBranch}\` are excluded` };
+  }
+  return { met: true };
+}
+
+// src/engine/scan.ts
 var INTEGRITY_RULE_ID = "security-inspector-integrity";
 var MAX_MATCH_LINE_LENGTH = 2e3;
 var EXCERPT_CONTEXT = 2;
+var MAX_FILE_CONTENT_BYTES = 1e6;
 function integrityRule(paths) {
   return {
     id: INTEGRITY_RULE_ID,
@@ -53450,6 +53501,7 @@ function integrityRule(paths) {
     severity: "critical",
     paths: [.../* @__PURE__ */ new Set([".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS", ...paths])],
     excludePaths: [],
+    fileContent: [],
     content: [],
     contentScope: "both",
     match: "all",
@@ -53458,30 +53510,101 @@ function integrityRule(paths) {
     priorityOnly: false
   };
 }
+function compilePatterns(patterns, extraFlags = "") {
+  return patterns.map((pattern) => {
+    const { pattern: source, flags = "" } = typeof pattern === "string" ? { pattern } : pattern;
+    const combined = [...new Set(`${flags.replace(/[gy]/g, "")}${extraFlags}`)].join("");
+    return { source, regex: new RegExp(source, combined) };
+  });
+}
 function compileRule(rule, honoursIgnorePaths) {
   const options = { dot: true, nocase: true };
-  const exclude = rule.excludePaths.length > 0 ? (0, import_picomatch2.default)(rule.excludePaths, options) : () => false;
+  const exclude = rule.excludePaths.length > 0 ? (0, import_picomatch3.default)(rule.excludePaths, options) : () => false;
   return {
     rule,
-    pathMatchers: rule.paths.map((glob) => ({ glob, test: (0, import_picomatch2.default)(glob, options) })),
+    pathMatchers: rule.paths.map((glob) => ({ glob, test: (0, import_picomatch3.default)(glob, options) })),
     isExcluded: exclude,
-    patterns: rule.content.map((pattern) => {
-      const { pattern: source, flags = "" } = typeof pattern === "string" ? { pattern } : pattern;
-      return { source, regex: new RegExp(source, flags.replace(/[gy]/g, "")) };
-    }),
+    // `m` so that ^ and $ anchor to lines within the whole file.
+    filePatterns: compilePatterns(rule.fileContent, "m"),
+    patterns: compilePatterns(rule.content),
     honoursIgnorePaths
   };
 }
-function ruleApplies(rule, profile) {
+function ruleApplies(rule, profile, pullRequest) {
   if (rule.priorityOnly && !profile.priority) return false;
   if (rule.repositories.length > 0 && !matchesRepository(rule.repositories, profile.repository)) return false;
   if (matchesRepository(rule.excludeRepositories, profile.repository)) return false;
-  return true;
+  return checkConditions(rule.when, pullRequest).met;
+}
+function applicableRules(policy, profile, options) {
+  const policyConditions = checkConditions(policy.settings.when, options.pullRequest);
+  if (!policyConditions.met) return { rules: [], skipped: policyConditions.reason };
+  const rules = [];
+  if (policy.settings.integrityRule) rules.push(compileRule(integrityRule(options.integrityPaths ?? []), false));
+  for (const rule of policy.rules) {
+    if (ruleApplies(rule, profile, options.pullRequest)) rules.push(compileRule(rule, true));
+  }
+  return { rules };
+}
+function ignoreMatcher(policy) {
+  return policy.settings.ignorePaths.length > 0 ? (0, import_picomatch3.default)(policy.settings.ignorePaths, { dot: true, nocase: true }) : () => false;
+}
+function isExcludedFrom(rule, file2, ignored) {
+  if (rule.honoursIgnorePaths && ignored(file2.filename)) return true;
+  const candidates = [file2.filename, file2.previousFilename].filter((path) => Boolean(path));
+  return candidates.every((path) => rule.isExcluded(path));
+}
+function needsContent(file2) {
+  return !(file2.status === "removed" && file2.patchAvailable);
+}
+function contentRequests(policy, profile, files, options = {}) {
+  const { rules } = applicableRules(policy, profile, options);
+  const contentRules = rules.filter((rule) => rule.filePatterns.length > 0);
+  if (contentRules.length === 0) return [];
+  const ignored = ignoreMatcher(policy);
+  const couldFlag = (rule, file2) => {
+    if (isExcludedFrom(rule, file2, ignored)) return false;
+    if (rule.rule.match === "all" && rule.pathMatchers.length > 0) {
+      return [file2.filename, file2.previousFilename].some((path) => path && rule.pathMatchers.some((matcher) => matcher.test(path)));
+    }
+    return true;
+  };
+  return files.filter((file2) => needsContent(file2) && contentRules.some((rule) => couldFlag(rule, file2))).slice(0, policy.settings.fileContentLimit).map((file2) => ({ file: file2, version: file2.status === "removed" ? "base" : "head" }));
+}
+function lineNumberAt(text, index) {
+  let line = 1;
+  for (let i = text.indexOf("\n"); i !== -1 && i < index; i = text.indexOf("\n", i + 1)) line++;
+  return line;
+}
+function matchFileContent(compiled, file2) {
+  if (compiled.filePatterns.length === 0) return { unknown: false };
+  const content = file2.content;
+  const readable = content !== void 0 && content.length <= MAX_FILE_CONTENT_BYTES && !content.includes("\0");
+  if (readable) {
+    for (const { source, regex } of compiled.filePatterns) {
+      const hit = regex.exec(content);
+      if (hit) {
+        const version2 = file2.status === "removed" ? "base" : "head";
+        return { marker: { pattern: source, matched: hit[0].trim().slice(0, 60) || source, line: lineNumberAt(content, hit.index), version: version2 }, unknown: false };
+      }
+    }
+  }
+  for (const hunk of file2.hunks) {
+    for (const line of hunk.lines) {
+      if (line.type !== "removed") continue;
+      const text = line.content.slice(0, MAX_MATCH_LINE_LENGTH);
+      for (const { source, regex } of compiled.filePatterns) {
+        const hit = regex.exec(text);
+        if (hit) return { marker: { pattern: source, matched: hit[0].trim().slice(0, 60) || source, line: line.oldLine ?? 0, version: "base" }, unknown: false };
+      }
+    }
+  }
+  return { unknown: !readable && needsContent(file2) };
 }
 function matchLines(compiled, hunks) {
   if (compiled.patterns.length === 0) return [];
   const scope = compiled.rule.contentScope;
-  const matches = [];
+  const matches2 = [];
   for (const hunk of hunks) {
     for (const line of hunk.lines) {
       if (line.type === "context") continue;
@@ -53490,7 +53613,7 @@ function matchLines(compiled, hunks) {
       for (const { source, regex } of compiled.patterns) {
         const hit = regex.exec(text);
         if (!hit) continue;
-        matches.push({
+        matches2.push({
           type: line.type,
           line: (line.type === "added" ? line.newLine : line.oldLine) ?? 0,
           content: line.content,
@@ -53501,7 +53624,7 @@ function matchLines(compiled, hunks) {
       }
     }
   }
-  return matches;
+  return matches2;
 }
 function buildExcerpt(hunks, isInteresting, maxLines) {
   const chunks = [];
@@ -53545,76 +53668,77 @@ function firstNumber(lines, from, key) {
 function matchFile(compiled, file2, maxSnippetLines) {
   const { rule } = compiled;
   const candidates = [file2.filename, file2.previousFilename].filter((path) => Boolean(path));
-  if (candidates.every((path) => compiled.isExcluded(path))) return void 0;
   const pathPatterns = compiled.pathMatchers.filter((matcher) => candidates.some((path) => matcher.test(path))).map((matcher) => matcher.glob);
   const pathHit = pathPatterns.length > 0;
+  const fileContent = matchFileContent(compiled, file2);
+  const fileHit = fileContent.marker !== void 0;
   const matchedLines = matchLines(compiled, file2.hunks);
   const contentHit = matchedLines.length > 0;
-  const hasPaths = rule.paths.length > 0;
-  const hasContent = rule.content.length > 0;
-  const contentUnknown = hasContent && !file2.patchAvailable;
-  let matched;
-  if (rule.match === "any") {
-    matched = pathHit || contentHit;
-  } else {
-    const pathOk = !hasPaths || pathHit;
-    const contentOk = !hasContent || contentHit || contentUnknown && pathHit;
-    matched = pathOk && contentOk;
-  }
-  if (!matched) return void 0;
+  const criteria = [
+    { defined: rule.paths.length > 0, hit: pathHit, unknown: false },
+    { defined: rule.fileContent.length > 0, hit: fileHit, unknown: fileContent.unknown },
+    { defined: rule.content.length > 0, hit: contentHit, unknown: !file2.patchAvailable }
+  ].filter((criterion) => criterion.defined);
+  const anyHit = criteria.some((criterion) => criterion.hit);
+  const matched = rule.match === "any" ? anyHit : anyHit && criteria.every((criterion) => criterion.hit || criterion.unknown);
+  if (!matched) return { contentUnknown: fileContent.unknown };
   const matchedKeys = new Set(matchedLines.map((match) => `${match.type}:${match.line}`));
-  const interesting = contentHit && !pathHit ? (line) => line.type !== "context" && matchedKeys.has(`${line.type}:${line.type === "added" ? line.newLine : line.oldLine}`) : (line) => line.type !== "context";
+  const interesting = contentHit && !pathHit && !fileHit ? (line) => line.type !== "context" && matchedKeys.has(`${line.type}:${line.type === "added" ? line.newLine : line.oldLine}`) : (line) => line.type !== "context";
   const { chunks, truncated } = buildExcerpt(file2.hunks, interesting, maxSnippetLines);
   return {
-    filename: file2.filename,
-    previousFilename: file2.previousFilename,
-    status: file2.status,
-    additions: file2.additions,
-    deletions: file2.deletions,
-    sha: file2.sha,
-    pathPatterns,
-    matchedLines,
-    contentUnavailable: !file2.patchAvailable && pathHit,
-    excerpt: chunks,
-    excerptTruncated: truncated
+    contentUnknown: fileContent.unknown,
+    match: {
+      filename: file2.filename,
+      previousFilename: file2.previousFilename,
+      status: file2.status,
+      additions: file2.additions,
+      deletions: file2.deletions,
+      sha: file2.sha,
+      pathPatterns,
+      fileMarker: fileContent.marker,
+      matchedLines,
+      contentUnavailable: criteria.some((criterion) => criterion.unknown && !criterion.hit),
+      excerpt: chunks,
+      excerptTruncated: truncated
+    }
   };
 }
 function scan(policy, profile, files, options = {}) {
   const maxSnippetLines = options.maxSnippetLines ?? policy.settings.report.maxSnippetLines;
-  const ignored = policy.settings.ignorePaths.length > 0 ? (0, import_picomatch2.default)(policy.settings.ignorePaths, { dot: true, nocase: true }) : () => false;
-  const compiled = [];
-  if (policy.settings.integrityRule) compiled.push(compileRule(integrityRule(options.integrityPaths ?? []), false));
-  for (const rule of policy.rules) {
-    if (ruleApplies(rule, profile)) compiled.push(compileRule(rule, true));
-  }
+  const ignored = ignoreMatcher(policy);
+  const { rules: compiled, skipped } = applicableRules(policy, profile, options);
   const findings = [];
+  const withoutContent = /* @__PURE__ */ new Set();
   for (const rule of compiled) {
-    const matches = [];
+    const matches2 = [];
     for (const file2 of files) {
-      if (rule.honoursIgnorePaths && ignored(file2.filename)) continue;
-      const match = matchFile(rule, file2, maxSnippetLines);
-      if (match) matches.push(match);
+      if (isExcludedFrom(rule, file2, ignored)) continue;
+      const { match, contentUnknown } = matchFile(rule, file2, maxSnippetLines);
+      if (contentUnknown) withoutContent.add(file2.filename);
+      if (match) matches2.push(match);
     }
-    if (matches.length === 0) continue;
+    if (matches2.length === 0) continue;
     const severity = boostSeverity(rule.rule.severity, profile.severityBoost);
     findings.push({
       rule: rule.rule,
       severity,
       baseSeverity: rule.rule.severity,
       blocking: severityRank(severity) >= severityRank(profile.blockOn),
-      files: matches,
-      additions: matches.reduce((sum, match) => sum + match.additions, 0),
-      deletions: matches.reduce((sum, match) => sum + match.deletions, 0)
+      files: matches2,
+      additions: matches2.reduce((sum, match) => sum + match.additions, 0),
+      deletions: matches2.reduce((sum, match) => sum + match.deletions, 0)
     });
   }
   findings.sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.rule.name.localeCompare(b.rule.name));
   return {
     profile,
+    skipped,
     findings,
     blocking: findings.filter((finding) => finding.blocking),
     nonBlocking: findings.filter((finding) => !finding.blocking),
-    filesScanned: files.length,
-    filesWithoutPatch: files.filter((file2) => !file2.patchAvailable).map((file2) => file2.filename),
+    filesScanned: skipped ? 0 : files.length,
+    filesWithoutPatch: skipped ? [] : files.filter((file2) => !file2.patchAvailable).map((file2) => file2.filename),
+    filesWithoutContent: [...withoutContent],
     rulesEvaluated: compiled.length
   };
 }
@@ -53785,7 +53909,7 @@ function mergeLocalRules(policy, localRules, source) {
   return { policy: { ...policy, rules: [...policy.rules, ...added] }, warnings };
 }
 function validateRegexes(rule, source) {
-  for (const pattern of rule.content) {
+  for (const pattern of [...rule.fileContent, ...rule.content]) {
     const { pattern: body, flags } = typeof pattern === "string" ? { pattern, flags: "" } : pattern;
     try {
       new RegExp(body, flags);
@@ -53836,12 +53960,16 @@ function renderExcerpt(chunks) {
 function triggerDescription(file2) {
   const parts = [];
   if (file2.pathPatterns.length > 0) parts.push(`path ${file2.pathPatterns.map(code).join(", ")}`);
+  if (file2.fileMarker) {
+    const { matched, line, version: version2 } = file2.fileMarker;
+    parts.push(version2 === "head" ? `file contains ${code(matched)} (line ${line})` : `change removes ${code(matched)} (old line ${line})`);
+  }
   if (file2.matchedLines.length > 0) {
     const terms = [...new Set(file2.matchedLines.map((line) => line.matched))];
     const lineCount = file2.matchedLines.length;
     parts.push(`content ${terms.slice(0, 3).map(code).join(", ")}${terms.length > 3 ? ", \u2026" : ""} (${lineCount} line${lineCount === 1 ? "" : "s"})`);
   }
-  if (file2.contentUnavailable) parts.push("_diff not available_");
+  if (file2.contentUnavailable) parts.push("_content not inspected_");
   return parts.join("; ");
 }
 function fileLabel(file2) {
@@ -53885,6 +54013,8 @@ function headline(decision, scan2) {
   const count = scan2.blocking.length;
   const components = `${count} security-critical component${count === 1 ? "" : "s"}`;
   switch (decision.state) {
+    case "skipped":
+      return "### \u23ED\uFE0F Security Inspector: not applicable to this pull request";
     case "clear":
       return scan2.findings.length === 0 ? "### \u2705 Security Inspector: no security-critical components modified" : "### \u2705 Security Inspector: security review not required";
     case "approved":
@@ -53943,7 +54073,9 @@ function renderReport(scan2, decision, context3, options = {}) {
       ""
     );
   }
-  if (scan2.blocking.length > 0) {
+  if (scan2.skipped) {
+    out.push(`This pull request was not inspected because ${escapeHtml(scan2.skipped)}.`, "");
+  } else if (scan2.blocking.length > 0) {
     out.push(summaryTable(scan2.blocking), "");
     out.push(...nextSteps(decision, scan2, context3), "");
     out.push("<details open><summary><strong>Flagged changes</strong></summary>", "");
@@ -53959,6 +54091,11 @@ function renderReport(scan2, decision, context3, options = {}) {
     out.push(summaryTable(scan2.nonBlocking), "");
     for (const finding of scan2.nonBlocking) out.push(renderFinding(finding, context3, withExcerpts));
     out.push("</details>", "");
+  }
+  if (scan2.filesWithoutContent.length > 0) {
+    const listed = scan2.filesWithoutContent.slice(0, 5).map(code).join(", ");
+    const more = scan2.filesWithoutContent.length > 5 ? `, and ${scan2.filesWithoutContent.length - 5} more` : "";
+    out.push(`<sub>\u26A0\uFE0F Could not read ${scan2.filesWithoutContent.length} file(s) (${listed}${more}), so rules that identify components by file content only used their path and changed lines there.</sub>`, "");
   }
   if (scan2.filesWithoutPatch.length > 0) {
     out.push(`<sub>${scan2.filesWithoutPatch.length} file(s) had no diff available (binary or too large) and were checked by path only.</sub>`, "");
@@ -54028,6 +54165,21 @@ async function listPullRequestFiles(octokit, ref, pullNumber) {
       patchAvailable: file2.patch !== void 0 || !hasChanges
     };
   });
+}
+async function readFileContents(octokit, ref, requests, shas, debug2, concurrency = 8) {
+  let next = 0;
+  const worker = async () => {
+    while (next < requests.length) {
+      const { file: file2, version: version2 } = requests[next++];
+      const path = version2 === "base" ? file2.previousFilename ?? file2.filename : file2.filename;
+      try {
+        file2.content = await readRepositoryFile(octokit, ref, path, shas[version2]);
+      } catch (error63) {
+        debug2(`Could not read ${path}@${version2}: ${error63.message}`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, worker));
 }
 async function readRepositoryFile(octokit, ref, path, gitRef) {
   try {
@@ -54208,7 +54360,10 @@ function resolveTrigger(inputs) {
     case "pull_request":
     case "pull_request_target":
       if (!payload.pull_request) return void 0;
-      return { pullNumber: payload.pull_request.number, contentChanged: ["opened", "reopened", "synchronize", "ready_for_review"].includes(payload.action ?? "") };
+      return {
+        pullNumber: payload.pull_request.number,
+        contentChanged: ["opened", "reopened", "synchronize", "ready_for_review", "edited"].includes(payload.action ?? "")
+      };
     case "pull_request_review":
       if (!payload.pull_request) return void 0;
       return { pullNumber: payload.pull_request.number, contentChanged: false };
@@ -54365,8 +54520,16 @@ async function run() {
   if (pull.changed_files > MAX_PULL_REQUEST_FILES) {
     warning(`This pull request changes ${pull.changed_files} files; GitHub only lists the first ${MAX_PULL_REQUEST_FILES}, the rest were not inspected.`);
   }
-  const integrityPaths = [inputs.localConfigPath, currentWorkflowPath(ref)].filter((path) => Boolean(path));
-  const scanResult = scan(policy, profile, files, { integrityPaths });
+  const scanOptions = {
+    integrityPaths: [inputs.localConfigPath, currentWorkflowPath(ref)].filter((path) => Boolean(path)),
+    pullRequest: { baseBranch: pull.base.ref, headBranch: pull.head.ref }
+  };
+  const requests = contentRequests(policy, profile, files, scanOptions);
+  if (requests.length > 0) {
+    await readFileContents(octokit, ref, requests, { head: headSha, base: pull.base.sha }, (message) => debug(message));
+  }
+  const scanResult = scan(policy, profile, files, scanOptions);
+  if (scanResult.skipped) info(`Policy does not apply: ${scanResult.skipped}`);
   const authorizer = new Authorizer(orgOctokit, ref.owner, (message) => warning(message));
   const comments = (await octokit.paginate(octokit.rest.issues.listComments, { ...ref, issue_number: pull.number, per_page: 100 })).map(toComment);
   if (trigger.comment && isBypass) {

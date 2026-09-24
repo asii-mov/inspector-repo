@@ -18,12 +18,15 @@ const POLICY = `
 settings:
   securityTeam: { teams: [security], users: [] }
   bypass: { teams: [leads], minReasonLength: 10 }
+  when: { baseBranches: [main] }
 rules:
   - id: auth
     name: Authentication
     severity: critical
     guidance: Check the password comparison.
+    match: any
     paths: ["src/auth/**"]
+    fileContent: ['from "passport"']
 `;
 
 interface Comment {
@@ -46,6 +49,10 @@ class FakeGitHub {
     { filename: 'src/ui/Button.tsx', status: 'modified', additions: 1, deletions: 1, sha: 'blob2', patch: '@@ -1 +1 @@\n-<b>Save</b>\n+<i>Save</i>' },
   ];
   teams: Record<string, string[]> = { security: ['sec-alice'], leads: ['lead-lena'] };
+  baseRef = 'main';
+  /** Files served by the contents API at the head commit. */
+  headContents: Record<string, string> = { 'src/ui/Button.tsx': 'export const Button = () => <i>Save</i>;\n' };
+  contentReads: string[] = [];
   private nextId = 100;
   private clock = Date.parse('2026-01-01T10:00:00Z');
 
@@ -66,11 +73,17 @@ class FakeGitHub {
     const route = `${method} ${decodeURIComponent(url.pathname)}`;
     let m: RegExpMatchArray | null;
     if (route === 'GET /repos/acme/web/pulls/1') {
-      return [200, { number: 1, state: 'open', html_url: 'https://github.test/acme/web/pull/1', changed_files: this.files.length, user: { login: 'dev' }, head: { sha: HEAD }, base: { sha: BASE }, labels: this.labels.map((name) => ({ name })), requested_reviewers: [], requested_teams: [] }];
+      return [200, { number: 1, state: 'open', html_url: 'https://github.test/acme/web/pull/1', changed_files: this.files.length, user: { login: 'dev' }, head: { sha: HEAD, ref: 'feature' }, base: { sha: BASE, ref: this.baseRef }, labels: this.labels.map((name) => ({ name })), requested_reviewers: [], requested_teams: [] }];
     }
     if (route === 'GET /repos/acme/web/contents/.github/security-inspector.yml') {
       if (url.searchParams.get('ref') !== BASE) return [500, { message: 'policy must be read from the base commit' }];
       return [200, { type: 'file', encoding: 'base64', content: Buffer.from(POLICY).toString('base64') }];
+    }
+    if ((m = route.match(/^GET \/repos\/acme\/web\/contents\/(.+)$/))) {
+      const path = m[1]!;
+      this.contentReads.push(`${path}@${url.searchParams.get('ref')}`);
+      const content = url.searchParams.get('ref') === HEAD ? this.headContents[path] : undefined;
+      return content === undefined ? [404, { message: 'Not Found' }] : [200, { type: 'file', encoding: 'base64', content: Buffer.from(content).toString('base64') }];
     }
     if (route === 'GET /repos/acme/web/pulls/1/files') return [200, this.files];
     if (route === 'GET /repos/acme/web/issues/1/comments') return [200, this.comments];
@@ -237,6 +250,36 @@ describe('GitHub Action', () => {
     const report = fake.comments.find((c) => c.body.startsWith('<!-- security-inspector:report -->'))!;
     expect(report.body).toContain('security review approved');
     expect(fake.comments.filter((c) => c.body.startsWith('<!-- security-inspector:report -->'))).toHaveLength(1);
+  });
+
+  it('flags any change to a file that is authentication code, reading it at the head commit', async () => {
+    fake.files = [{ filename: 'src/server/routes.ts', status: 'modified', additions: 1, deletions: 1, sha: 'blob3', patch: '@@ -2 +2 @@\n-router.get("/profile", h);\n+router.get("/me", h);' }];
+    fake.headContents['src/server/routes.ts'] = 'import passport from "passport";\nrouter.get("/me", h);\n';
+    await runAction('pull_request_target', prEvent);
+    expect(fake.contentReads).toEqual([`src/server/routes.ts@${HEAD}`]);
+    expect(fake.statuses.at(-1)).toMatchObject({ state: 'failure', description: 'Security review required: Authentication (0/1 approvals)' });
+    const report = fake.comments.find((c) => c.body.startsWith('<!-- security-inspector:report -->'))!;
+    expect(report.body).toContain('file contains `from "passport"` (line 1)');
+  });
+
+  it('only inspects pull requests into the configured branches, and re-checks when retargeted', async () => {
+    fake.baseRef = 'dev';
+    await runAction('pull_request_target', prEvent);
+    expect(fake.statuses.at(-1)).toMatchObject({ state: 'success', description: expect.stringContaining('Not applicable: the pull request targets dev') });
+    expect(fake.comments).toEqual([]);
+
+    // Retargeting the pull request to main makes the policy apply.
+    fake.baseRef = 'main';
+    await runAction('pull_request_target', { action: 'edited', changes: { base: { ref: { from: 'dev' } } }, pull_request: { number: 1 } });
+    expect(fake.statuses.at(-1)!.state).toBe('failure');
+    expect(fake.labels).toEqual(['security-review-required']);
+
+    // And back to dev: status passes, the label goes and the report says why.
+    fake.baseRef = 'dev';
+    await runAction('pull_request_target', { action: 'edited', changes: { base: { ref: { from: 'main' } } }, pull_request: { number: 1 } });
+    expect(fake.statuses.at(-1)!.state).toBe('success');
+    expect(fake.labels).toEqual([]);
+    expect(fake.comments.find((c) => c.body.startsWith('<!-- security-inspector:report -->'))!.body).toContain('not applicable to this pull request');
   });
 
   it('ignores comments that are not commands', async () => {

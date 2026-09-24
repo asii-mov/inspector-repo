@@ -18,12 +18,20 @@ settings:
     users: []
   requestReview: true
 
+  # Only inspect pull requests into these branches (branch globs). Pull requests into other
+  # branches get a passing "not applicable" status. Remove to inspect every pull request.
+  when:
+    baseBranches: [main, "release/*"]
+
   # Never inspected (applies to every rule except the built-in integrity rule).
   ignorePaths:
     - "**/node_modules/**"
     - "**/vendor/**"
     - "**/*.min.js"
     - "**/*.snap"
+
+  # How many changed files are read in full for `fileContent` rules (API calls per run).
+  fileContentLimit: 300
 
   bypass:
     enabled: true
@@ -57,12 +65,19 @@ priorityRepositories:
     repositories: ["acme/identity-*", "acme/sso-gateway"]
     blockOn: medium
 
+# Each rule describes a security-critical COMPONENT. ANY change to a file that belongs to the
+# component is flagged, whether or not the change itself looks risky: a refactor of the login
+# code needs the same review as a change to its password check. A file belongs to a component when
+#   paths:        its path matches, e.g. anything under auth/
+#   fileContent:  the file contains a marker, e.g. it imports passport or defines login()
+# With `match: any`, either is enough. (`content:` also exists, to flag specific changed lines
+# anywhere in the codebase, but the rules below deliberately watch whole components.)
 rules:
   - id: authentication
     name: Authentication
     severity: critical
-    description: Login, credential verification, MFA and token issuance decide who a user is.
-    guidance: Check for bypassable checks, weakened password or MFA handling, token lifetime changes and user enumeration.
+    description: Login, credential verification, MFA, SSO and token issuance decide who a user is.
+    guidance: Review every change, including refactors. Check that credentials are still verified, tokens are validated and expire, and MFA cannot be skipped.
     match: any
     paths:
       - "**/auth/**"
@@ -74,85 +89,73 @@ rules:
       - "**/*saml*"
       - "**/*oidc*"
       - "**/*mfa*"
-      - "**/*2fa*"
-    excludePaths: ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/*.md", "**/*.css", "**/*.scss"]
-    content:
-      - pattern: '\b(jwt\.(sign|verify|decode)|jsonwebtoken|passport\.(use|authenticate)|bcrypt|argon2|scrypt|pbkdf2|verify_?password|check_?password|authenticate\()'
-        flags: i
-      - pattern: '\b(id_token|access_token|refresh_token|totp|webauthn)\b'
-        flags: i
+      - "**/*sso*"
+    excludePaths: &not-code ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/test/**", "**/tests/**", "**/*.md", "**/*.css", "**/*.scss", "**/*.svg", "**/*.png"]
+    fileContent:
+      # Authentication libraries: JavaScript/TypeScript, Python, Java, Ruby, Go.
+      - pattern: '(from|require\()\s*["''](passport[\w-]*|jsonwebtoken|jose|bcrypt(js)?|argon2|next-auth[\w/-]*|@auth/[\w-]+|express-jwt|otplib|speakeasy|@simplewebauthn/[\w-]+)["'']'
+      - pattern: '^\s*(from|import)\s+(django\.contrib\.auth|flask_login|flask_jwt_extended|passlib|jwt|authlib)\b'
+      - pattern: '(org\.springframework\.security|\bdevise\b|golang\.org/x/oauth2|github\.com/golang-jwt)'
+      # Code that defines authentication functions.
+      - pattern: '\b(function|def|func)\s+(\([^)]*\)\s*)?\w*([Aa]uthenticate|[Ll]ogin|[Ss]ign_?[Ii]n|verify_?[Pp]assword|check_?[Pp]assword|hash_?[Pp]assword|issue_?[Tt]oken|verify_?[Tt]oken|refresh_?[Tt]oken)\w*\s*\('
 
   - id: authorization
     name: Authorization & access control
     severity: critical
     description: Role, permission and ownership checks decide what a user may do.
-    guidance: Look for removed or loosened checks, new unauthenticated routes and IDOR (missing ownership checks).
+    guidance: Check that no route, query or action lost its permission or ownership check, and that roles were not widened.
     match: any
-    paths:
-      - "**/permissions/**"
-      - "**/policies/**"
-      - "**/rbac/**"
-      - "**/acl/**"
-      - "**/*authoriz*"
-      - "**/middleware/*auth*"
-    excludePaths: ["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/*.md"]
-    content:
-      - pattern: '\b(is_?admin|has_?role|has_?permission|can_?access|require_?role|authorize|@PreAuthorize|@RolesAllowed|@login_required|permission_classes|AllowAny|skip_before_action\s*:authenticate)'
-        flags: i
+    paths: ["**/permissions/**", "**/policies/**", "**/rbac/**", "**/acl/**", "**/admin/**", "**/*admin*", "**/*authoriz*", "**/middleware/*auth*"]
+    excludePaths: *not-code
+    fileContent:
+      - pattern: '(from|require\()\s*["''](@casl/[\w-]+|casbin|accesscontrol|express-jwt-permissions)["'']'
+      - pattern: '(@PreAuthorize|@RolesAllowed|@Secured|permission_classes|\bpundit\b|\bcancancan\b|authorize!)'
+      # Code that defines OR performs permission checks, e.g. `if (!req.user.isAdmin)`. Removing
+      # the last check from a file still counts, because removed lines are searched too.
+      - pattern: '\b(is_?[Aa]dmin|[Hh]as_?[Pp]ermission|[Hh]as_?[Rr]ole|[Rr]equire_?[Rr]ole|[Cc]an_?[Aa]ccess|[Aa]uthorize|check_?[Pp]ermissions?)\b'
 
   - id: session-management
-    name: Session & cookie security
+    name: Session & CSRF handling
     severity: high
-    description: Session and cookie flags protect against hijacking and CSRF.
-    guidance: Confirm Secure/HttpOnly/SameSite are kept, sessions expire and CSRF protection is not disabled.
-    content:
-      # Cookie flags and CSRF settings only; bare "session" names were too noisy in UI code.
-      - pattern: '\b(httpOnly|sameSite|secure\s*:\s*(true|false)|csrf|xsrf|express-session|cookie-session|SESSION_COOKIE_\w+|session\.cookie)'
-        flags: i
+    description: Session storage, cookie settings and CSRF protection guard against hijacking and forged requests.
+    guidance: Confirm cookies stay Secure/HttpOnly/SameSite, sessions still expire and CSRF protection is still applied.
+    match: any
+    paths: ["**/middleware/*session*", "**/middleware/*csrf*"]
+    excludePaths: *not-code
+    fileContent:
+      - pattern: '(from|require\()\s*["''](express-session|cookie-session|connect-redis|iron-session|csurf|lusca)["'']'
+      - pattern: '\b(SESSION_COOKIE_\w+|SESSION_ENGINE|CSRF_\w+|session\.cookie)\b'
 
   - id: cryptography
-    name: Cryptography
+    name: Cryptography & TLS
     severity: high
-    description: Encryption, hashing, randomness and TLS settings.
-    guidance: Watch for weak algorithms (MD5, SHA-1, DES, ECB), hardcoded keys or IVs, non-cryptographic randomness and disabled certificate validation.
+    description: Encryption, signing, key handling and TLS configuration.
+    guidance: Watch for weaker algorithms or modes, key or IV handling changes and relaxed certificate validation.
     match: any
-    paths: ["**/crypto/**", "**/encryption/**", "**/*cipher*"]
-    content:
-      - pattern: '\b(createCipheriv|createHash|createHmac|crypto\.subtle|Cipher\.getInstance|MessageDigest|hashlib\.|Fernet|AES|RSA|ECDSA|md5|sha1|DES\b|ECB)'
-        flags: i
-      - pattern: '(rejectUnauthorized\s*:\s*false|verify\s*=\s*False|InsecureSkipVerify|NODE_TLS_REJECT_UNAUTHORIZED)'
+    paths: ["**/crypto/**", "**/encryption/**", "**/*cipher*", "**/*tls*"]
+    excludePaths: *not-code
+    fileContent:
+      - pattern: '(createCipheriv|createDecipheriv|createSign|createVerify|generateKeyPair|crypto\.subtle|javax\.crypto|cryptography\.hazmat|from Crypto\.Cipher|crypto/(aes|cipher|rsa|ecdsa|tls)|tls\.Config\{|ssl\.create_default_context|rejectUnauthorized|NODE_TLS_REJECT_UNAUTHORIZED)'
 
-  - id: secrets
-    name: Secrets & credentials handling
-    severity: critical
-    description: Hardcoded credentials or changes to how secrets are loaded.
-    guidance: Ensure no real secrets are committed and secret sources (vault, KMS) are not replaced with plaintext.
-    contentScope: added
-    content:
-      - pattern: '(api[_-]?key|secret|passw(or)?d|private[_-]?key|client[_-]?secret)\s*[:=]\s*["''][^"'']{8,}["'']'
-        flags: i
-      - pattern: '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
-      - pattern: '\b(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|xox[baprs]-[A-Za-z0-9-]+)'
+  - id: secrets-management
+    name: Secrets management
+    severity: high
+    description: Code and configuration that load credentials from vaults, KMS or environment files.
+    guidance: Make sure secrets still come from the secret store and are not logged, hardcoded or exposed to the client.
+    match: any
+    paths: ["**/.env*", "**/secrets/**", "**/*vault*", "**/*kms*"]
+    fileContent:
+      - pattern: '(@aws-sdk/client-(kms|secrets-manager)|@google-cloud/secret-manager|@azure/keyvault-secrets|node-vault|\bhvac\b|SecretManagerServiceClient)'
 
-  - id: security-headers
-    name: Security headers, CORS & CSP
+  - id: security-middleware
+    name: Security headers & CORS
     severity: high
     description: Browser-side protections against XSS, clickjacking and cross-origin data theft.
     guidance: Check that CORS does not allow arbitrary origins with credentials and CSP/HSTS are not weakened.
-    content:
-      - pattern: '(Access-Control-Allow-Origin|cors\(|allowedOrigins|Content-Security-Policy|helmet\(|Strict-Transport-Security|X-Frame-Options|frame-ancestors)'
-        flags: i
-
-  - id: injection-sinks
-    name: Raw queries, shell and eval
-    severity: high
-    description: Dynamic SQL, shell execution and code evaluation are common injection sinks.
-    guidance: Confirm user input cannot reach these calls unsanitised; prefer parameterised queries.
-    contentScope: added
-    content:
-      # No leading \b: it never matches before "$" or ".", so "$queryRawUnsafe" would be missed.
-      # "(?<![.\w])exec(" skips harmless method calls such as regex.exec(...).
-      - pattern: '(\beval\(|\bnew Function\(|child_process|(?<![.\w])exec(Sync)?\(|\bspawn\(|\bsubprocess\.|\bos\.system\(|Runtime\.getRuntime\(\)\.exec|\$(query|execute)RawUnsafe|\.raw\(|dangerouslySetInnerHTML|\.innerHTML\s*=)'
+    excludePaths: *not-code
+    fileContent:
+      - pattern: '(from|require\()\s*["''](helmet|cors|@fastify/(cors|helmet)|flask_cors)["'']'
+      - pattern: '(Content-Security-Policy|Strict-Transport-Security|Access-Control-Allow-Origin|X-Frame-Options|CORS_ALLOWED_ORIGINS|corsheaders)'
 
   - id: payments
     name: Payment processing
@@ -160,20 +163,16 @@ rules:
     description: Card data, payouts and payment provider integrations.
     match: any
     paths: ["**/payments/**", "**/billing/**", "**/checkout/**"]
-    excludePaths: ["**/*.css", "**/*.scss", "**/*.svg", "**/*.md"]
-    content:
-      - pattern: '\b(stripe|braintree|adyen|paypal|card_?number|cvv|pan\b)'
-        flags: i
+    excludePaths: *not-code
+    fileContent:
+      - pattern: '(from|require\()\s*["''](stripe|@stripe/[\w-]+|braintree|@adyen/[\w-]+|@paypal/[\w-]+)["'']'
 
   - id: infrastructure-iam
     name: Infrastructure & IAM
     severity: high
     description: Cloud permissions, network exposure and infrastructure-as-code.
-    guidance: Look for wildcard IAM permissions, public buckets and security groups open to 0.0.0.0/0.
-    match: any
+    guidance: Look for widened IAM permissions, public buckets and network rules open to the internet.
     paths: ["**/*.tf", "**/terraform/**", "**/iam/**", "**/k8s/**/*rbac*", "**/helm/**/values*.yaml"]
-    content:
-      - pattern: '("Action"\s*:\s*"\*"|0\.0\.0\.0/0|public-read|privileged:\s*true|hostNetwork:\s*true)'
 
   - id: ci-pipeline
     name: CI/CD pipeline
@@ -186,4 +185,7 @@ rules:
     severity: medium
     description: New or updated third-party packages (supply chain).
     priorityOnly: true
+    # Rules can have their own conditions too: only check dependencies on the way into main.
+    when:
+      baseBranches: [main]
     paths: ["**/package.json", "**/requirements*.txt", "**/pyproject.toml", "**/go.mod", "**/Gemfile", "**/pom.xml", "**/build.gradle*", "**/Cargo.toml"]

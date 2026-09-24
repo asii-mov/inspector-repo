@@ -86,7 +86,7 @@ export function mergeLocalRules(policy: Policy, localRules: Rule[], source: stri
 }
 
 function validateRegexes(rule: Rule, source: string): void {
-  for (const pattern of rule.content) {
+  for (const pattern of [...rule.fileContent, ...rule.content]) {
     const { pattern: body, flags } = typeof pattern === 'string' ? { pattern, flags: '' } : pattern;
     try {
       new RegExp(body, flags);

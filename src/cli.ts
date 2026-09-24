@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { parseGitDiff } from './diff/parse.js';
 import { evaluate } from './engine/evaluate.js';
 import { resolveRepositoryProfile } from './engine/priority.js';
-import { scan } from './engine/scan.js';
+import { contentRequests, MAX_FILE_CONTENT_BYTES, scan, type ScanOptions } from './engine/scan.js';
 import { mergeLocalRules, parseLocalRules, parsePolicy, PolicyError } from './policy/load.js';
 import { renderReport, renderText } from './report/markdown.js';
 
@@ -21,7 +21,11 @@ Scan options:
                       (default: derived from the "origin" remote)
   --base <ref>        Base ref to diff against (default: origin/HEAD, then main)
   --head <ref>        Head ref (default: HEAD)
-  --diff <file>       Read a unified diff from a file ("-" for stdin) instead of running git
+  --diff <file>       Read a unified diff from a file ("-" for stdin) instead of running git.
+                      File contents for fileContent rules are then read from the working tree.
+  --target-branch <b> Branch the pull request would merge into, for \`when\` conditions
+                      (default: derived from --base, e.g. origin/main -> main)
+  --source-branch <b> Branch the pull request comes from (default: current branch or --head)
   --format <fmt>      text | markdown | json (default: text)
 
 Exit codes: 0 no review needed, 1 security review required, 2 usage or policy error.
@@ -54,6 +58,21 @@ function defaultBase(): string {
   throw new PolicyError('could not determine a base ref; pass --base', 'git');
 }
 
+function branchName(ref: string): string {
+  return ref.replace(/^refs\/(heads|remotes)\//, '').replace(/^origin\//, '');
+}
+
+/** Reads a file at a git revision (or from the working tree when `revision` is undefined). */
+function readFileAt(path: string, revision: string | undefined): string | undefined {
+  try {
+    if (revision === undefined) return existsSync(path) ? readFileSync(path, 'utf8') : undefined;
+    const content = execFileSync('git', ['show', `${revision}:${path}`], { encoding: 'utf8', maxBuffer: MAX_FILE_CONTENT_BYTES * 4, stdio: ['ignore', 'pipe', 'ignore'] });
+    return content;
+  } catch {
+    return undefined;
+  }
+}
+
 function loadPolicyFiles(policyPath: string, localPath?: string) {
   const policy = parsePolicy(readFileSync(policyPath, 'utf8'), policyPath);
   if (!localPath) return { policy, warnings: [] as string[] };
@@ -73,6 +92,8 @@ function main(argv: string[]): number {
       base: { type: 'string' },
       head: { type: 'string' },
       diff: { type: 'string' },
+      'target-branch': { type: 'string' },
+      'source-branch': { type: 'string' },
       format: { type: 'string', default: 'text' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -106,17 +127,35 @@ function main(argv: string[]): number {
   warnings.forEach((warning) => process.stderr.write(`warning: ${warning}\n`));
 
   let diffText: string;
+  let revisions: { head?: string; base?: string } = {};
+  let baseRef = values.base;
+  let headRef = values.head;
   if (values.diff) {
     diffText = readFileSync(values.diff === '-' ? 0 : values.diff, 'utf8');
   } else {
-    const base = values.base ?? defaultBase();
-    const head = values.head ?? 'HEAD';
+    const base = (baseRef ??= defaultBase());
+    const head = (headRef ??= 'HEAD');
     diffText = git(['diff', '--no-color', '--no-ext-diff', '--find-renames', '-U3', `${base}...${head}`]);
+    revisions = { head, base: git(['merge-base', base, head]).trim() };
   }
+
+  const targetBranch = values['target-branch'] ?? (baseRef ? branchName(baseRef) : undefined);
+  const sourceBranch = values['source-branch'] ?? (headRef && headRef !== 'HEAD' ? branchName(headRef) : tryGit(['rev-parse', '--abbrev-ref', 'HEAD']));
+  const options: ScanOptions = {
+    integrityPaths: values.local ? [values.local] : [],
+    pullRequest: targetBranch && sourceBranch ? { baseBranch: targetBranch, headBranch: sourceBranch } : undefined,
+  };
 
   const repository = values.repo ?? repositoryFromRemote();
   const profile = resolveRepositoryProfile(policy, repository);
-  const result = scan(policy, profile, parseGitDiff(diffText), { integrityPaths: values.local ? [values.local] : [] });
+  const files = parseGitDiff(diffText);
+  for (const { file, version } of contentRequests(policy, profile, files, options)) {
+    const path = version === 'base' ? (file.previousFilename ?? file.filename) : file.filename;
+    // With --diff there are no revisions: read the working tree (head) and skip base versions.
+    if (values.diff && version === 'base') continue;
+    file.content = readFileAt(path, values.diff ? undefined : revisions[version]);
+  }
+  const result = scan(policy, profile, files, options);
   const decision = evaluate({ scan: result, approvals: [], changesRequestedBy: [] });
 
   if (values.format === 'json') {

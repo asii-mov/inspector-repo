@@ -1,7 +1,7 @@
 import type { BypassRecord } from './bypass.js';
 import type { ScanResult } from './scan.js';
 
-export type DecisionState = 'clear' | 'approved' | 'bypassed' | 'blocked';
+export type DecisionState = 'skipped' | 'clear' | 'approved' | 'bypassed' | 'blocked';
 
 export interface Approval {
   user: string;
@@ -55,6 +55,10 @@ export function evaluate(input: EvaluationInput): Decision {
   const validApprovals = input.approvals.filter((approval) => approval.valid);
   const staleApprovals = input.approvals.filter((approval) => !approval.valid);
   const base = { requiredApprovals, validApprovals, staleApprovals, changesRequestedBy: input.changesRequestedBy, bypass: input.bypass };
+
+  if (scan.skipped) {
+    return { ...base, state: 'skipped', description: truncate(`Not applicable: ${scan.skipped.replace(/`/g, '')}`, STATUS_DESCRIPTION_LIMIT) };
+  }
 
   if (scan.blocking.length === 0) {
     const description =

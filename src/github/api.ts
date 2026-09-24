@@ -35,6 +35,34 @@ export async function listPullRequestFiles(octokit: Octokit, ref: RepoRef, pullN
   });
 }
 
+/**
+ * Reads the full content of changed files for `fileContent` rules and stores it on each file.
+ * Files that cannot be read (too large, binary, errors) are left without content; the scanner
+ * reports them.
+ */
+export async function readFileContents(
+  octokit: Octokit,
+  ref: RepoRef,
+  requests: { file: ChangedFile; version: 'head' | 'base' }[],
+  shas: { head: string; base: string },
+  debug: (message: string) => void,
+  concurrency = 8,
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < requests.length) {
+      const { file, version } = requests[next++]!;
+      const path = version === 'base' ? (file.previousFilename ?? file.filename) : file.filename;
+      try {
+        file.content = await readRepositoryFile(octokit, ref, path, shas[version]);
+      } catch (error) {
+        debug(`Could not read ${path}@${version}: ${(error as Error).message}`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, requests.length) }, worker));
+}
+
 /** Reads a text file from a repository, or returns undefined if it does not exist. */
 export async function readRepositoryFile(octokit: Octokit, ref: RepoRef, path: string, gitRef?: string): Promise<string | undefined> {
   try {
