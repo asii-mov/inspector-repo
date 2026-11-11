@@ -173,8 +173,10 @@ function ignoreMatcher(policy: Policy): (path: string) => boolean {
 }
 
 function isExcludedFrom(rule: CompiledRule, file: ChangedFile, ignored: (path: string) => boolean): boolean {
-  if (rule.honoursIgnorePaths && ignored(file.filename)) return true;
+  // A rename is only skipped when both paths are excluded, so moving watched code into an
+  // ignored or excluded path is still inspected.
   const candidates = [file.filename, file.previousFilename].filter((path): path is string => Boolean(path));
+  if (rule.honoursIgnorePaths && candidates.every((path) => ignored(path))) return true;
   return candidates.every((path) => rule.isExcluded(path));
 }
 

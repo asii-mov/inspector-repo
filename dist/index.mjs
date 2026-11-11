@@ -53550,8 +53550,8 @@ function ignoreMatcher(policy) {
   return policy.settings.ignorePaths.length > 0 ? (0, import_picomatch3.default)(policy.settings.ignorePaths, { dot: true, nocase: true }) : () => false;
 }
 function isExcludedFrom(rule, file2, ignored) {
-  if (rule.honoursIgnorePaths && ignored(file2.filename)) return true;
   const candidates = [file2.filename, file2.previousFilename].filter((path) => Boolean(path));
+  if (rule.honoursIgnorePaths && candidates.every((path) => ignored(path))) return true;
   return candidates.every((path) => rule.isExcluded(path));
 }
 function needsContent(file2) {
